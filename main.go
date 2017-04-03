@@ -8,6 +8,7 @@ func main() {
 	serviceIn := make(chan string)
 
 	startDiscovery(config, serviceIn)
+	startMessaging(config, serviceIn)
 
 	end := make(chan bool, 1)
 	<-end

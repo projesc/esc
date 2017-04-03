@@ -21,8 +21,8 @@ func startDiscovery(config *Config, ch chan string) chan bool {
 	go func() {
 		for entry := range entriesCh {
 			if _, ok := config.Servers[entry.Name]; ok {
-				ch <- entry.Name
 			} else {
+				ch <- entry.Name
 				config.Servers[entry.Name] = entry.AddrV4
 			}
 		}

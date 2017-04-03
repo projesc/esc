@@ -15,6 +15,7 @@ type Config struct {
 	Node      string `json:"node"`
 	IFace     string `json:iface`
 	Discovery int    `json:"discovery"`
+	Port      int    `json:"port"`
 
 	Net *net.Interface
 	IPs []net.IP
@@ -30,6 +31,7 @@ func defaultConfig() Config {
 	config := Config{
 		Node:      host,
 		Host:      host,
+		Port:      8181,
 		Discovery: 8801,
 		IFace:     "eth0",
 	}
@@ -65,6 +67,9 @@ func LoadConfig() *Config {
 			}
 			if fileConfig.Discovery != 0 {
 				defaultConfig.Discovery = fileConfig.Discovery
+			}
+			if fileConfig.Port != 0 {
+				defaultConfig.Port = fileConfig.Port
 			}
 		}
 	}
