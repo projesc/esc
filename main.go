@@ -1,11 +1,9 @@
 package main
 
-import ()
-
 func main() {
 	config := LoadConfig()
 
-	serviceIn := make(chan string)
+	serviceIn := make(chan *Node)
 
 	startDiscovery(config, serviceIn)
 	startMessaging(config, serviceIn)

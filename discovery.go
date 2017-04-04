@@ -2,10 +2,11 @@ package main
 
 import (
 	"github.com/hashicorp/mdns"
+	"log"
 	"time"
 )
 
-func startDiscovery(config *Config, ch chan string) chan bool {
+func startDiscovery(config *Config, ch chan *Node) chan bool {
 	info := []string{"dsc"}
 	service, err0 := mdns.NewMDNSService(config.Node, "_dsc._tcp", "", config.Host, config.Discovery, config.IPs, info)
 	if err0 != nil {
@@ -20,10 +21,15 @@ func startDiscovery(config *Config, ch chan string) chan bool {
 	entriesCh := make(chan *mdns.ServiceEntry, 4)
 	go func() {
 		for entry := range entriesCh {
-			if _, ok := config.Servers[entry.Name]; ok {
+			if _, ok := config.Nodes[entry.Name]; ok {
 			} else {
-				ch <- entry.Name
-				config.Servers[entry.Name] = entry.AddrV4
+				log.Printf("Found node %s\n", entry.Name)
+				server := Node{
+					Name:    entry.Name,
+					Service: entry,
+				}
+				config.Nodes[entry.Name] = server
+				ch <- &server
 			}
 		}
 	}()

@@ -1,5 +1,5 @@
 
-all: build
+all: clean build
 
 build: dsc-amd64
 

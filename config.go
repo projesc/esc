@@ -3,24 +3,33 @@ package main
 import (
 	"flag"
 	"github.com/ghodss/yaml"
+	"github.com/hashicorp/mdns"
+	"github.com/valyala/gorpc"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
 )
 
+type Node struct {
+	Name    string
+	IP      *net.IP
+	Service *mdns.ServiceEntry
+	Client  *gorpc.Client
+}
+
 type Config struct {
 	Host string
 
 	Node      string `json:"node"`
-	IFace     string `json:iface`
+	IFace     string `json:"iface"`
 	Discovery int    `json:"discovery"`
 	Port      int    `json:"port"`
 
 	Net *net.Interface
 	IPs []net.IP
 
-	Servers map[string]net.IP
+	Nodes map[string]Node
 }
 
 func defaultConfig() Config {
@@ -34,6 +43,7 @@ func defaultConfig() Config {
 		Port:      8181,
 		Discovery: 8801,
 		IFace:     "eth0",
+		Nodes:     make(map[string]Node),
 	}
 	return config
 }
@@ -42,6 +52,8 @@ func LoadConfig() *Config {
 	config := Config{}
 
 	defaultConfig := defaultConfig()
+
+	config.Nodes = defaultConfig.Nodes
 
 	if len(os.Args) > 1 {
 		configFile := os.Args[len(os.Args)-1]
@@ -77,6 +89,7 @@ func LoadConfig() *Config {
 	flag.StringVar(&config.Node, "node", defaultConfig.Node, "Name of this node")
 	flag.StringVar(&config.IFace, "iface", defaultConfig.IFace, "Network Interface to bind to")
 	flag.IntVar(&config.Discovery, "discovery", defaultConfig.Discovery, "Port for network discovery")
+	flag.IntVar(&config.Port, "port", defaultConfig.Port, "Port for cluster conns")
 	flag.Parse()
 
 	iface, errFace := net.InterfaceByName(config.IFace)
