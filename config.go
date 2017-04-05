@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"github.com/ghodss/yaml"
-	"github.com/hashicorp/mdns"
+	"github.com/micro/mdns"
 	"github.com/valyala/gorpc"
 	"io/ioutil"
 	"log"

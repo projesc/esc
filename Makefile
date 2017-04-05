@@ -17,5 +17,5 @@ clean:
 
 deps:
 	go get github.com/ghodss/yaml
-	go get github.com/hashicorp/mdns
+	go get github.com/micro/mdns
 	go get github.com/valyala/gorpc

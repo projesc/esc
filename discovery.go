@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/hashicorp/mdns"
+	"github.com/micro/mdns"
 	"log"
 	"time"
 )
