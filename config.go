@@ -25,6 +25,7 @@ type Config struct {
 	IFace     string `json:"iface"`
 	Discovery int    `json:"discovery"`
 	Port      int    `json:"port"`
+	Join      string `json:"join"`
 
 	Net *net.Interface
 	IPs []net.IP
@@ -74,6 +75,9 @@ func LoadConfig() *Config {
 			if fileConfig.Node != "" {
 				defaultConfig.Node = fileConfig.Node
 			}
+			if fileConfig.Join != "" {
+				defaultConfig.Join = fileConfig.Join
+			}
 			if fileConfig.IFace != "" {
 				defaultConfig.IFace = fileConfig.IFace
 			}
@@ -86,6 +90,7 @@ func LoadConfig() *Config {
 		}
 	}
 
+	flag.StringVar(&config.Join, "join", defaultConfig.Join, "Node to join")
 	flag.StringVar(&config.Node, "node", defaultConfig.Node, "Name of this node")
 	flag.StringVar(&config.IFace, "iface", defaultConfig.IFace, "Network Interface to bind to")
 	flag.IntVar(&config.Discovery, "discovery", defaultConfig.Discovery, "Port for network discovery")
