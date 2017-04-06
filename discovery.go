@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"github.com/micro/mdns"
 	"log"
 	"time"
 )
 
 func startDiscovery(config *Config, ch chan *Node) chan bool {
+	config.Self = fmt.Sprintf("%s._dsc._tcp.local.", config.Node)
 	info := []string{"dsc"}
 	service, err0 := mdns.NewMDNSService(config.Node, "_dsc._tcp", "", config.Host, config.Discovery, config.IPs, info)
 	if err0 != nil {
@@ -24,12 +26,11 @@ func startDiscovery(config *Config, ch chan *Node) chan bool {
 			if _, ok := config.Nodes[entry.Name]; ok {
 			} else {
 				log.Printf("Found node %s\n", entry.Name)
-				server := Node{
-					Name:    entry.Name,
+				node := Node{
 					Service: entry,
 				}
-				config.Nodes[entry.Name] = server
-				ch <- &server
+				config.Nodes[node.Service.Name] = &node
+				ch <- &node
 			}
 		}
 	}()

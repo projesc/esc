@@ -15,12 +15,14 @@ type Message struct {
 	Payload []byte
 }
 
-func handler(clientAddr string, request interface{}) interface{} {
-	log.Printf("Obtained request %+v from the client %s\n", request, clientAddr)
+func handler(_ string, request interface{}) interface{} {
+	message := request.(*Message)
+	log.Printf("Received %s from %s\n", message.Name, message.From)
 	return request
 }
 
 func sendEvent(config *Config, to string, name string, payload []byte) {
+	log.Printf("Sending event %s to %s\n", name, to)
 	send(config, &Message{
 		To:      to,
 		Name:    name,
@@ -30,7 +32,7 @@ func sendEvent(config *Config, to string, name string, payload []byte) {
 }
 
 func send(config *Config, msg *Message) {
-	msg.From = config.Node
+	msg.From = config.Self
 
 	if msg.To == "*" {
 		for name, node := range config.Nodes {
@@ -65,7 +67,7 @@ func startMessaging(config *Config, nodeIn chan *Node) chan bool {
 			c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", node.Service.AddrV4.String(), config.Port))
 			c.Start()
 			node.Client = c
-			sendEvent(config, node.Name, "ping", []byte("ping"))
+			sendEvent(config, node.Service.Name, "ping", []byte("ping"))
 		}
 	}()
 

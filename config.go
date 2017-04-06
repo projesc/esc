@@ -12,25 +12,24 @@ import (
 )
 
 type Node struct {
-	Name    string
-	IP      *net.IP
-	Service *mdns.ServiceEntry
 	Client  *gorpc.Client
+	Service *mdns.ServiceEntry
 }
 
 type Config struct {
 	Host string
+	Self string
 
 	Node      string `json:"node"`
+	Join      string `json:"join"`
 	IFace     string `json:"iface"`
 	Discovery int    `json:"discovery"`
 	Port      int    `json:"port"`
-	Join      string `json:"join"`
 
 	Net *net.Interface
 	IPs []net.IP
 
-	Nodes map[string]Node
+	Nodes map[string]*Node
 }
 
 func defaultConfig() Config {
@@ -44,7 +43,7 @@ func defaultConfig() Config {
 		Port:      8181,
 		Discovery: 8801,
 		IFace:     "eth0",
-		Nodes:     make(map[string]Node),
+		Nodes:     make(map[string]*Node),
 	}
 	return config
 }
@@ -90,8 +89,8 @@ func LoadConfig() *Config {
 		}
 	}
 
-	flag.StringVar(&config.Join, "join", defaultConfig.Join, "Node to join")
 	flag.StringVar(&config.Node, "node", defaultConfig.Node, "Name of this node")
+	flag.StringVar(&config.Join, "join", defaultConfig.Join, "Address of node to join")
 	flag.StringVar(&config.IFace, "iface", defaultConfig.IFace, "Network Interface to bind to")
 	flag.IntVar(&config.Discovery, "discovery", defaultConfig.Discovery, "Port for network discovery")
 	flag.IntVar(&config.Port, "port", defaultConfig.Port, "Port for cluster conns")
