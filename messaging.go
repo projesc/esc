@@ -49,20 +49,20 @@ func handle(config *Config, message *Message) {
 	}
 
 	for _, listener := range listeners {
-		ok := false
+		ok := true
+
 		if listener.From == "" {
-			ok = true
 		} else if listener.From == "*" {
-			ok = true
 		} else if listener.From == message.From {
-			ok = true
+		} else {
+			ok = false
 		}
+
 		if listener.Name == "" {
-			ok = true
 		} else if listener.Name == "*" {
-			ok = true
 		} else if listener.Name == message.Name {
-			ok = true
+		} else {
+			ok = false
 		}
 
 		if ok {
@@ -118,7 +118,7 @@ func send(config *Config, msg *Message) {
 	}
 }
 
-func startMessaging(config *Config, nodeIn chan *Node) chan bool {
+func startMessaging(config *Config, nodeIn chan *Node, nodeOut chan string) chan bool {
 	quit := make(chan bool)
 
 	sendQueue = make(chan *Message)
@@ -184,15 +184,23 @@ func startMessaging(config *Config, nodeIn chan *Node) chan bool {
 		for _, node := range config.Nodes {
 			node.Client.Stop()
 		}
+		close(sendQueue)
 		close(handleQueue)
 	}()
 
 	go func() {
 		for node := range nodeIn {
+			log.Println("new node", node.Service.Name)
 			c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", node.Service.AddrV4.String(), config.Port))
 			c.Start()
 			node.Client = c
 			SendCommand(config, node.Service.Name, "ping", "ping", true)
+		}
+	}()
+	go func() {
+		for nodeName := range nodeOut {
+			config.Nodes[nodeName].Client.Stop()
+			delete(config.Nodes, nodeName)
 		}
 	}()
 

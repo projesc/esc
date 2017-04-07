@@ -15,7 +15,7 @@ func NameOf(node string) string {
 	return fmt.Sprintf("%s._dsc._tcp.local.", node)
 }
 
-func startDiscovery(config *Config, ch chan *Node) chan bool {
+func startDiscovery(config *Config, nodeIn chan *Node, nodeOut chan string) chan bool {
 	config.Self = Self(config)
 	info := []string{"dsc"}
 	service, err0 := mdns.NewMDNSService(config.Node, "_dsc._tcp", "", config.Host, config.Discovery, config.IPs, info)
@@ -38,7 +38,7 @@ func startDiscovery(config *Config, ch chan *Node) chan bool {
 					Service: entry,
 				}
 				config.Nodes[node.Service.Name] = &node
-				ch <- &node
+				nodeIn <- &node
 			}
 		}
 	}()
