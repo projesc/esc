@@ -14,18 +14,64 @@ type Message struct {
 	From     string
 	Name     string
 	To       string
-	Payload  []byte
+	Payload  string
 	Coalesce bool
+}
+
+type Listener struct {
+	From    string
+	Name    string
+	Handler func(config *Config, message *Message)
 }
 
 var sendQueue chan *Message
 var handleQueue chan *Message
 
-func handle(config *Config, message *Message) {
-	log.Printf("Received %s from %s\n", message.Name, message.From)
+var eventListeners []*Listener
+var commandListeners []*Listener
+
+func OnEvent(config *Config, from string, name string, handler func(config *Config, message *Message)) {
+	eventListeners = append(eventListeners, &Listener{From: from, Name: name, Handler: handler})
 }
 
-func SendCommand(config *Config, to string, name string, payload []byte, coalesce bool) {
+func OnCommand(config *Config, from string, name string, handler func(config *Config, message *Message)) {
+	commandListeners = append(commandListeners, &Listener{From: from, Name: name, Handler: handler})
+}
+
+func handle(config *Config, message *Message) {
+	log.Printf("Received %s from %s\n", message.Name, message.From)
+
+	var listeners []*Listener
+	if message.Event {
+		listeners = eventListeners
+	} else if message.Command {
+		listeners = commandListeners
+	}
+
+	for _, listener := range listeners {
+		ok := false
+		if listener.From == "" {
+			ok = true
+		} else if listener.From == "*" {
+			ok = true
+		} else if listener.From == message.From {
+			ok = true
+		}
+		if listener.Name == "" {
+			ok = true
+		} else if listener.Name == "*" {
+			ok = true
+		} else if listener.Name == message.Name {
+			ok = true
+		}
+
+		if ok {
+			listener.Handler(config, message)
+		}
+	}
+}
+
+func SendCommand(config *Config, to string, name string, payload string, coalesce bool) {
 	log.Printf("Sending command %s to %s\n", name, to)
 
 	msg := Message{
@@ -40,7 +86,7 @@ func SendCommand(config *Config, to string, name string, payload []byte, coalesc
 	sendQueue <- &msg
 }
 
-func SendEvent(config *Config, name string, payload []byte) {
+func SendEvent(config *Config, name string, payload string) {
 	log.Printf("Sending event %s\n", name)
 	msg := Message{
 		To:       "*",
@@ -146,7 +192,7 @@ func startMessaging(config *Config, nodeIn chan *Node) chan bool {
 			c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", node.Service.AddrV4.String(), config.Port))
 			c.Start()
 			node.Client = c
-			SendCommand(config, node.Service.Name, "ping", []byte("ping"), true)
+			SendCommand(config, node.Service.Name, "ping", "ping", true)
 		}
 	}()
 

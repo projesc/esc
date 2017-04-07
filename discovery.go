@@ -7,8 +7,16 @@ import (
 	"time"
 )
 
+func Self(config *Config) string {
+	return fmt.Sprintf("%s._dsc._tcp.local.", config.Node)
+}
+
+func NameOf(node string) string {
+	return fmt.Sprintf("%s._dsc._tcp.local.", node)
+}
+
 func startDiscovery(config *Config, ch chan *Node) chan bool {
-	config.Self = fmt.Sprintf("%s._dsc._tcp.local.", config.Node)
+	config.Self = Self(config)
 	info := []string{"dsc"}
 	service, err0 := mdns.NewMDNSService(config.Node, "_dsc._tcp", "", config.Host, config.Discovery, config.IPs, info)
 	if err0 != nil {
