@@ -2,9 +2,9 @@ package main
 
 import (
 	"flag"
+	"github.com/diogok/gorpc"
 	"github.com/ghodss/yaml"
 	"github.com/micro/mdns"
-	"github.com/valyala/gorpc"
 	"io/ioutil"
 	"log"
 	"net"

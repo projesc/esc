@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
+	"github.com/diogok/gorpc"
 	"github.com/patrickmn/go-cache"
-	"github.com/valyala/gorpc"
 	"log"
 	"time"
 )
