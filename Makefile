@@ -12,6 +12,9 @@ dsc-arm:
 docker: dsc-amd64
 	docker build -t diogok/dsc .
 
+docker-arm: dsc-arm
+	docker build -t diogok/dsc:arm -f Dockerfile.arm .
+
 run:
 	go run *.go
 
@@ -24,3 +27,6 @@ deps:
 	go get github.com/micro/mdns
 	go get github.com/diogok/gorpc
 	go get github.com/patrickmn/go-cache
+
+push:
+	docker push diogok/dsc

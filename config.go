@@ -40,8 +40,8 @@ func defaultConfig() Config {
 	config := Config{
 		Node:      host,
 		Host:      host,
-		Port:      8181,
-		Discovery: 8801,
+		Port:      8901,
+		Discovery: 8902,
 		IFace:     "eth0",
 		Nodes:     make(map[string]*Node),
 	}
@@ -115,6 +115,8 @@ func LoadConfig() *Config {
 			config.IPs = append(config.IPs, ip)
 		}
 	}
+
+	log.Printf("%v\n", config)
 
 	return &config
 }

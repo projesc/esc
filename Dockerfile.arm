@@ -1,5 +1,6 @@
 FROM scratch
 
-ADD dsc-amd64 /dsc
+ADD dsc-arm /dsc
 
 ENTRYPOINT ["/dsc"]
+

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/micro/mdns"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -31,14 +32,16 @@ func startDiscovery(config *Config, nodeIn chan *Node, nodeOut chan string) chan
 	entriesCh := make(chan *mdns.ServiceEntry, 4)
 	go func() {
 		for entry := range entriesCh {
-			if _, ok := config.Nodes[entry.Name]; ok {
-			} else {
-				log.Printf("Found node %s\n", entry.Name)
-				node := Node{
-					Service: entry,
+			if strings.HasSuffix(entry.Name, "_dsc._tcp.local.") {
+				if _, ok := config.Nodes[entry.Name]; ok {
+				} else {
+					log.Printf("Found node %s\n", entry.Name)
+					node := Node{
+						Service: entry,
+					}
+					config.Nodes[node.Service.Name] = &node
+					nodeIn <- &node
 				}
-				config.Nodes[node.Service.Name] = &node
-				nodeIn <- &node
 			}
 		}
 	}()
