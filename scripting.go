@@ -184,65 +184,63 @@ func startScripting() {
 	ticker := time.NewTicker(5 * time.Second)
 	go func() {
 		for {
-			select {
-			case <-ticker.C:
-				_, errStat := os.Lstat(config.Scripts)
-				if errStat != nil {
-					log.Println(errStat)
-					continue
-				}
-				dir, _ := os.Open(config.Scripts)
+			<-ticker.C
+			_, errStat := os.Lstat(config.Scripts)
+			if errStat != nil {
+				log.Println(errStat)
+				continue
+			}
+			dir, _ := os.Open(config.Scripts)
 
-				files, err := dir.Readdir(0)
+			files, err := dir.Readdir(0)
 
-				if err != nil {
-					log.Println(err)
-					continue
-				}
+			if err != nil {
+				log.Println(err)
+				continue
+			}
 
-				got := make(map[string]bool)
+			got := make(map[string]bool)
 
-				for _, fileInfo := range files {
-					fileName := fileInfo.Name()
-					if strings.HasSuffix(fileName, ".lua") {
-						got[fileName] = true
+			for _, fileInfo := range files {
+				fileName := fileInfo.Name()
+				if strings.HasSuffix(fileName, ".lua") {
+					got[fileName] = true
 
-						hasher := sha256.New()
-						f, _ := os.Open(fmt.Sprintf("%s/%s", config.Scripts, fileName))
-						io.Copy(hasher, f)
-						f.Close()
+					hasher := sha256.New()
+					f, _ := os.Open(fmt.Sprintf("%s/%s", config.Scripts, fileName))
+					io.Copy(hasher, f)
+					f.Close()
 
-						hash := hex.EncodeToString(hasher.Sum(nil))
+					hash := hex.EncodeToString(hasher.Sum(nil))
 
-						if _, ok := vms[fileName]; ok {
-							if vms[fileName].Hash == hash {
-							} else {
-								stopScript(vms[fileName])
-								log.Println("Restarting script", fileName)
-								vms[fileName] = startScript(fileName)
-								vms[fileName].Hash = hash
-							}
+					if _, ok := vms[fileName]; ok {
+						if vms[fileName].Hash == hash {
 						} else {
-							log.Println("Starting script", fileName)
+							stopScript(vms[fileName])
+							log.Println("Restarting script", fileName)
 							vms[fileName] = startScript(fileName)
 							vms[fileName].Hash = hash
 						}
-					}
-				}
-
-				var toRemove []string
-				for name, vm := range vms {
-					if _, ok := got[name]; ok {
 					} else {
-						log.Println("Stoping script", name)
-						stopScript(vm)
-						toRemove = append(toRemove, name)
+						log.Println("Starting script", fileName)
+						vms[fileName] = startScript(fileName)
+						vms[fileName].Hash = hash
 					}
 				}
+			}
 
-				for _, name := range toRemove {
-					delete(vms, name)
+			var toRemove []string
+			for name, vm := range vms {
+				if _, ok := got[name]; ok {
+				} else {
+					log.Println("Stoping script", name)
+					stopScript(vm)
+					toRemove = append(toRemove, name)
 				}
+			}
+
+			for _, name := range toRemove {
+				delete(vms, name)
 			}
 		}
 	}()

@@ -135,9 +135,7 @@ func send(msg *Message) {
 	}
 }
 
-func startMessaging(nodeIn chan *Node, nodeOut chan string) chan bool {
-	quit := make(chan bool)
-
+func startMessaging(nodeIn chan *Node, nodeOut chan string) {
 	sendQueue = make(chan *Message)
 	handleQueue = make(chan *Message)
 
@@ -196,16 +194,6 @@ func startMessaging(nodeIn chan *Node, nodeOut chan string) chan bool {
 	}()
 
 	go func() {
-		<-quit
-		s.Stop()
-		for _, node := range config.Nodes {
-			node.Client.Stop()
-		}
-		close(sendQueue)
-		close(handleQueue)
-	}()
-
-	go func() {
 		for node := range nodeIn {
 			log.Println("New node", node.Service.Name)
 			c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", node.Service.AddrV4.String(), config.Port))
@@ -226,16 +214,12 @@ func startMessaging(nodeIn chan *Node, nodeOut chan string) chan bool {
 	ticker := time.NewTicker(10 * time.Second)
 	go func() {
 		for {
-			select {
-			case <-ticker.C:
-				for name, node := range config.Nodes {
-					if node.Client.Stats.Snapshot().ReadErrors > 10 {
-						nodeOut <- name
-					}
+			<-ticker.C
+			for name, node := range config.Nodes {
+				if node.Client.Stats.Snapshot().ReadErrors > 10 {
+					nodeOut <- name
 				}
 			}
 		}
 	}()
-
-	return quit
 }

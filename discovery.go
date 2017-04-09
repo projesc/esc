@@ -16,7 +16,7 @@ func NameOf(node string) string {
 	return fmt.Sprintf("%s._dsc._tcp.local.", node)
 }
 
-func startDiscovery(nodeIn chan *Node, nodeOut chan string) chan bool {
+func startDiscovery(nodeIn chan *Node, nodeOut chan string) {
 	config.Self = Self()
 	info := []string{"dsc"}
 	service, err0 := mdns.NewMDNSService(config.Node, "_dsc._tcp", "", config.Host, config.Discovery, config.IPs, info)
@@ -24,7 +24,7 @@ func startDiscovery(nodeIn chan *Node, nodeOut chan string) chan bool {
 		panic(err0)
 	}
 
-	server, err1 := mdns.NewServer(&mdns.Config{Zone: service, Iface: config.Net})
+	_, err1 := mdns.NewServer(&mdns.Config{Zone: service, Iface: config.Net})
 	if err1 != nil {
 		panic(err1)
 	}
@@ -47,18 +47,10 @@ func startDiscovery(nodeIn chan *Node, nodeOut chan string) chan bool {
 	}()
 
 	ticker := time.NewTicker(5 * time.Second)
-	quit := make(chan bool)
 	go func() {
 		for {
-			select {
-			case <-ticker.C:
-				mdns.Lookup("_dsc._tcp", entriesCh)
-			case <-quit:
-				server.Shutdown()
-				return
-			}
+			<-ticker.C
+			mdns.Lookup("_dsc._tcp", entriesCh)
 		}
 	}()
-
-	return quit
 }

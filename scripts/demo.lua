@@ -4,7 +4,7 @@ set("foo","bar")
 
 foo = get("foo")
 
-print(foo)
+log(foo)
 
 onEvent("*","test",function(msg)
   log("Received "..msg.name)
@@ -18,7 +18,7 @@ end)
 
 i=0
 ticker(2,function()
-  print("Sending hello "..i.."!")
+  log("Sending hello "..i.."!")
   i = i +1
   sendEvent("test","hello")
   return i <= 5

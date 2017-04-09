@@ -22,6 +22,8 @@ func main() {
 
 	startScripting()
 
+	startDirSync()
+
 	if config.Join != "" {
 		join(nodeIn, nodeOut)
 	}
