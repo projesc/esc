@@ -54,7 +54,7 @@ func onFileChanged(message *Message) {
 		return
 	}
 
-	parts := strings.Split(message.Payload, ",")
+	parts := strings.SplitN(message.Payload, ",", 2)
 	fileName := parts[0]
 	content := parts[1]
 	hasher := sha256.New()
@@ -100,7 +100,7 @@ func dirSync(dirName string) {
 
 			for _, fileInfo := range files {
 				fileName := fmt.Sprintf("%s/%s", dirName, fileInfo.Name())
-				if strings.HasPrefix(fileName, ".") {
+				if strings.HasPrefix(fileName, fmt.Sprintf("%s/.", dirName)) {
 					continue
 				}
 				got[fileName] = true
