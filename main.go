@@ -5,31 +5,35 @@ import (
 	"github.com/diogok/gorpc"
 )
 
+var config *Config
+
 func main() {
-	config := LoadConfig()
+	config = LoadConfig()
 
 	nodeIn := make(chan *Node)
 	nodeOut := make(chan string)
 
 	if config.Discovery != 0 {
-		startDiscovery(config, nodeIn, nodeOut)
+		startDiscovery(nodeIn, nodeOut)
 	}
 
-	startMessaging(config, nodeIn, nodeOut)
-	registerBuiltin(config, nodeIn, nodeOut)
+	startMessaging(nodeIn, nodeOut)
+	registerBuiltin(nodeIn, nodeOut)
+
+	startScripting()
 
 	if config.Join != "" {
-		join(config, nodeIn, nodeOut)
+		join(nodeIn, nodeOut)
 	}
 
 	end := make(chan bool, 1)
 	<-end
 }
 
-func join(config *Config, nodeIn chan *Node, nodeOut chan string) {
+func join(nodeIn chan *Node, nodeOut chan string) {
 	msg := Message{
 		To:      "*",
-		From:    Self(config),
+		From:    Self(),
 		Command: true,
 		Event:   false,
 		Name:    "join",

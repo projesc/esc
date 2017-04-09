@@ -25,6 +25,7 @@ type Config struct {
 	IFace     string `json:"iface"`
 	Discovery int    `json:"discovery"`
 	Port      int    `json:"port"`
+	Scripts   string `json:"scripts"`
 
 	Net *net.Interface
 	IPs []net.IP
@@ -37,6 +38,7 @@ func defaultConfig() Config {
 	if err != nil {
 		panic(err)
 	}
+
 	config := Config{
 		Node:      host,
 		Host:      host,
@@ -44,7 +46,9 @@ func defaultConfig() Config {
 		Discovery: 8902,
 		IFace:     "eth0",
 		Nodes:     make(map[string]*Node),
+		Scripts:   "scripts",
 	}
+
 	return config
 }
 
@@ -86,12 +90,16 @@ func LoadConfig() *Config {
 			if fileConfig.Port != 0 {
 				defaultConfig.Port = fileConfig.Port
 			}
+			if fileConfig.Scripts != "" {
+				defaultConfig.Scripts = fileConfig.Scripts
+			}
 		}
 	}
 
 	flag.StringVar(&config.Node, "node", defaultConfig.Node, "Name of this node")
 	flag.StringVar(&config.Join, "join", defaultConfig.Join, "Address of node to join")
 	flag.StringVar(&config.IFace, "iface", defaultConfig.IFace, "Network Interface to bind to")
+	flag.StringVar(&config.Scripts, "scripts", defaultConfig.Scripts, "Scripts directory")
 	flag.IntVar(&config.Discovery, "discovery", defaultConfig.Discovery, "Port for network discovery")
 	flag.IntVar(&config.Port, "port", defaultConfig.Port, "Port for cluster conns")
 	flag.Parse()

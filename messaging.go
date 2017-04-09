@@ -21,7 +21,7 @@ type Message struct {
 type Listener struct {
 	From    string
 	Name    string
-	Handler func(config *Config, message *Message)
+	Handler func(message *Message)
 }
 
 var sendQueue chan *Message
@@ -30,15 +30,32 @@ var handleQueue chan *Message
 var eventListeners []*Listener
 var commandListeners []*Listener
 
-func OnEvent(config *Config, from string, name string, handler func(config *Config, message *Message)) {
-	eventListeners = append(eventListeners, &Listener{From: from, Name: name, Handler: handler})
+func Off(listener *Listener) {
+	for i, registered := range eventListeners {
+		if registered == listener {
+			eventListeners = append(eventListeners[:i], eventListeners[i+1:]...)
+		}
+	}
+	for i, registered := range commandListeners {
+		if registered == listener {
+			commandListeners = append(commandListeners[:i], commandListeners[i+1:]...)
+		}
+	}
 }
 
-func OnCommand(config *Config, from string, name string, handler func(config *Config, message *Message)) {
-	commandListeners = append(commandListeners, &Listener{From: from, Name: name, Handler: handler})
+func OnEvent(from string, name string, handler func(message *Message)) *Listener {
+	listener := Listener{From: from, Name: name, Handler: handler}
+	eventListeners = append(eventListeners, &listener)
+	return &listener
 }
 
-func handle(config *Config, message *Message) {
+func OnCommand(from string, name string, handler func(message *Message)) *Listener {
+	listener := Listener{From: from, Name: name, Handler: handler}
+	commandListeners = append(commandListeners, &listener)
+	return &listener
+}
+
+func handle(message *Message) {
 	log.Printf("Received %s from %s\n", message.Name, message.From)
 
 	var listeners []*Listener
@@ -66,12 +83,12 @@ func handle(config *Config, message *Message) {
 		}
 
 		if ok {
-			listener.Handler(config, message)
+			listener.Handler(message)
 		}
 	}
 }
 
-func SendCommand(config *Config, to string, name string, payload string, coalesce bool) {
+func SendCommand(to string, name string, payload string, coalesce bool) {
 	log.Printf("Sending command %s to %s\n", name, to)
 
 	msg := Message{
@@ -86,7 +103,7 @@ func SendCommand(config *Config, to string, name string, payload string, coalesc
 	sendQueue <- &msg
 }
 
-func SendEvent(config *Config, name string, payload string) {
+func SendEvent(name string, payload string) {
 	log.Printf("Sending event %s\n", name)
 	msg := Message{
 		To:       "*",
@@ -100,7 +117,7 @@ func SendEvent(config *Config, name string, payload string) {
 	sendQueue <- &msg
 }
 
-func send(config *Config, msg *Message) {
+func send(msg *Message) {
 	msg.From = config.Self
 	if msg.To == "*" {
 		for name, node := range config.Nodes {
@@ -118,7 +135,7 @@ func send(config *Config, msg *Message) {
 	}
 }
 
-func startMessaging(config *Config, nodeIn chan *Node, nodeOut chan string) chan bool {
+func startMessaging(nodeIn chan *Node, nodeOut chan string) chan bool {
 	quit := make(chan bool)
 
 	sendQueue = make(chan *Message)
@@ -152,7 +169,7 @@ func startMessaging(config *Config, nodeIn chan *Node, nodeOut chan string) chan
 			}
 
 			if shouldHandle {
-				handle(config, msg)
+				handle(msg)
 			} else {
 				log.Println("Dropping handle", msg.Name)
 			}
@@ -171,7 +188,7 @@ func startMessaging(config *Config, nodeIn chan *Node, nodeOut chan string) chan
 			}
 
 			if shouldSend {
-				send(config, msg)
+				send(msg)
 			} else {
 				log.Println("Dropping send", msg.Name)
 			}
@@ -190,17 +207,33 @@ func startMessaging(config *Config, nodeIn chan *Node, nodeOut chan string) chan
 
 	go func() {
 		for node := range nodeIn {
-			log.Println("new node", node.Service.Name)
+			log.Println("New node", node.Service.Name)
 			c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", node.Service.AddrV4.String(), config.Port))
 			c.Start()
 			node.Client = c
-			SendCommand(config, node.Service.Name, "ping", "ping", true)
+			SendCommand(node.Service.Name, "ping", "ping", true)
 		}
 	}()
+
 	go func() {
 		for nodeName := range nodeOut {
+			log.Printf("Node out %s\n", nodeName)
 			config.Nodes[nodeName].Client.Stop()
 			delete(config.Nodes, nodeName)
+		}
+	}()
+
+	ticker := time.NewTicker(10 * time.Second)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				for name, node := range config.Nodes {
+					if node.Client.Stats.Snapshot().ReadErrors > 10 {
+						nodeOut <- name
+					}
+				}
+			}
 		}
 	}()
 

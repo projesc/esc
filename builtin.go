@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/micro/mdns"
 	"github.com/patrickmn/go-cache"
 	"log"
@@ -11,31 +12,47 @@ import (
 
 var kv *cache.Cache
 
-func pingCmd(config *Config, message *Message) {
-	SendEvent(config, "ping", "ping")
+func Get(key string) string {
+	v, found := kv.Get(key)
+	if !found {
+		log.Println(key, "not found")
+		return ""
+	}
+	return v.(string)
 }
 
-func pingEvt(config *Config, message *Message) {
+func Set(key string, value string) {
+	kv.Set(key, value, cache.NoExpiration)
+	SendEvent("set", fmt.Sprintf("%s,%s", key, value))
+}
+
+func pingCmd(message *Message) {
+	SendEvent("ping", "ping")
+}
+
+func pingEvt(message *Message) {
 	log.Printf("Ping from %s\n", message.From)
 }
 
-func setEvt(config *Config, msg *Message) {
-	parts := strings.Split(msg.Payload, ",")
-	if len(parts) == 2 {
-		log.Printf("Set %s = %s", parts[0], parts[1])
-		kv.Set(parts[0], parts[1], cache.NoExpiration)
+func setEvt(msg *Message) {
+	if msg.From != Self() {
+		parts := strings.Split(msg.Payload, ",")
+		if len(parts) == 2 {
+			log.Printf("Set %s = %s", parts[0], parts[1])
+			kv.Set(parts[0], parts[1], cache.NoExpiration)
+		}
 	}
 }
 
 /*
-func membersCmd(config *Config, message *Mesage) {
+func membersCmd(message *Mesage, nodeIn chan *Node) {
 }
 
-func memberEvt(config *Config, message *Message) {
+func membersEvt(message *Message, nodeIn chan *Node) {
 }
 */
 
-func joinCmd(config *Config, message *Message, nodeIn chan *Node) {
+func joinCmd(message *Message, nodeIn chan *Node) {
 	ip := net.ParseIP(message.Payload)
 	service := mdns.ServiceEntry{
 		Name:   message.From,
@@ -48,15 +65,15 @@ func joinCmd(config *Config, message *Message, nodeIn chan *Node) {
 	nodeIn <- &node
 }
 
-func registerBuiltin(config *Config, nodeIn chan *Node, _ chan string) {
+func registerBuiltin(nodeIn chan *Node, _ chan string) {
 	kv = cache.New(6*time.Hour, 1*time.Hour)
 
-	OnCommand(config, "*", "ping", pingCmd)
-	OnEvent(config, "*", "ping", pingEvt)
+	OnCommand("*", "ping", pingCmd)
+	OnEvent("*", "ping", pingEvt)
 
-	OnEvent(config, "*", "set", setEvt)
+	OnEvent("*", "set", setEvt)
 
-	OnCommand(config, "*", "join", func(config *Config, message *Message) {
-		joinCmd(config, message, nodeIn)
+	OnCommand("*", "join", func(message *Message) {
+		joinCmd(message, nodeIn)
 	})
 }

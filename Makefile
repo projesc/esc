@@ -27,6 +27,7 @@ deps:
 	go get github.com/micro/mdns
 	go get github.com/diogok/gorpc
 	go get github.com/patrickmn/go-cache
+	go get github.com/yuin/gopher-lua
 
 push:
 	docker push diogok/dsc
