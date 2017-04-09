@@ -18,7 +18,6 @@ type Node struct {
 
 type Config struct {
 	Host string
-	Self string
 
 	Node      string `json:"node"`
 	Join      string `json:"join"`
@@ -114,6 +113,7 @@ func LoadConfig() *Config {
 	if aerr != nil {
 		panic(aerr)
 	}
+
 	for _, addr := range addrs {
 		ip, _, iperr := net.ParseCIDR(addr.String())
 		if iperr != nil {

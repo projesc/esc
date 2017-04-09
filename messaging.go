@@ -68,17 +68,10 @@ func handle(message *Message) {
 	for _, listener := range listeners {
 		ok := true
 
-		if listener.From == "" {
-		} else if listener.From == "*" {
-		} else if listener.From == message.From {
-		} else {
+		if listener.From != "" && listener.From != "*" && listener.From != message.From {
 			ok = false
 		}
-
-		if listener.Name == "" {
-		} else if listener.Name == "*" {
-		} else if listener.Name == message.Name {
-		} else {
+		if listener.Name != "" && listener.Name != "*" && listener.Name != message.Name {
 			ok = false
 		}
 
@@ -88,7 +81,11 @@ func handle(message *Message) {
 	}
 }
 
-func SendCommand(to string, name string, payload string, coalesce bool) {
+func SendCommand(to string, name string, payload string) {
+	SendCommandC(to, name, payload, true)
+}
+
+func SendCommandC(to string, name string, payload string, coalesce bool) {
 	log.Printf("Sending command %s to %s\n", name, to)
 
 	msg := Message{
@@ -104,21 +101,26 @@ func SendCommand(to string, name string, payload string, coalesce bool) {
 }
 
 func SendEvent(name string, payload string) {
+	SendEventC(name, payload, false)
+}
+
+func SendEventC(name string, payload string, coalesce bool) {
 	log.Printf("Sending event %s\n", name)
+
 	msg := Message{
 		To:       "*",
 		Name:     name,
 		Event:    true,
 		Command:  false,
 		Payload:  payload,
-		Coalesce: false,
+		Coalesce: coalesce,
 	}
 
 	sendQueue <- &msg
 }
 
 func send(msg *Message) {
-	msg.From = config.Self
+	msg.From = Self()
 	if msg.To == "*" {
 		for name, node := range config.Nodes {
 			msg.To = name
@@ -146,8 +148,8 @@ func startMessaging(nodeIn chan *Node, nodeOut chan string) {
 		handleQueue <- message
 		return req
 	})
-	err := s.Start()
 
+	err := s.Start()
 	if err != nil {
 		panic(err)
 	}
@@ -159,8 +161,9 @@ func startMessaging(nodeIn chan *Node, nodeOut chan string) {
 		for msg := range handleQueue {
 			shouldHandle := true
 			if msg.Coalesce {
-				_, shouldNotHandle := recentHandle.Get(msg.Name)
-				recentHandle.Set(msg.Name, msg.Name, cache.DefaultExpiration)
+				full := fmt.Sprintf("%s,%s", msg.Name, msg.Payload)
+				_, shouldNotHandle := recentHandle.Get(full)
+				recentHandle.Set(full, msg.Name, cache.DefaultExpiration)
 				if shouldNotHandle {
 					shouldHandle = false
 				}
@@ -178,8 +181,9 @@ func startMessaging(nodeIn chan *Node, nodeOut chan string) {
 		for msg := range sendQueue {
 			shouldSend := true
 			if msg.Coalesce {
-				_, shouldNotSend := recentSend.Get(fmt.Sprintf("%s/%s", msg.To, msg.Name))
-				recentSend.Set(msg.Name, msg.Name, cache.DefaultExpiration)
+				full := fmt.Sprintf("%s,%s,%s", msg.To, msg.Name, msg.Payload)
+				_, shouldNotSend := recentSend.Get(full)
+				recentSend.Set(full, msg.Name, cache.DefaultExpiration)
 				if shouldNotSend {
 					shouldSend = false
 				}
@@ -199,7 +203,7 @@ func startMessaging(nodeIn chan *Node, nodeOut chan string) {
 			c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", node.Service.AddrV4.String(), config.Port))
 			c.Start()
 			node.Client = c
-			SendCommand(node.Service.Name, "ping", "ping", true)
+			SendCommand(node.Service.Name, "ping", "ping")
 		}
 	}()
 
@@ -211,7 +215,7 @@ func startMessaging(nodeIn chan *Node, nodeOut chan string) {
 		}
 	}()
 
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(30 * time.Second)
 	go func() {
 		for {
 			<-ticker.C
@@ -222,4 +226,5 @@ func startMessaging(nodeIn chan *Node, nodeOut chan string) {
 			}
 		}
 	}()
+
 }

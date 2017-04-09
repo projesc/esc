@@ -14,12 +14,22 @@ import (
 
 var registeredFiles map[string]*File
 
-func startDirSync() {
+func startDirSync(nodeIn chan *Node) {
 	OnEvent("*", "fileSync", onFileChanged)
 	OnEvent("*", "fileRemoved", onFileRemoved)
+
 	if config.Scripts != "" {
-		dirSync(config.Scripts)
+		DirSync(config.Scripts)
 	}
+
+	go func() {
+		for node := range nodeIn {
+			log.Println("Sending files cause of new node", node.Service.Name)
+			for name, _ := range registeredFiles {
+				sendFile(name)
+			}
+		}
+	}()
 }
 
 type File struct {
@@ -32,7 +42,7 @@ func sendFile(file string) {
 	if err != nil {
 		log.Println(err)
 	} else {
-		SendEvent("fileSync", fmt.Sprintf("%s,%s", file, string(content)))
+		SendEventC("fileSync", fmt.Sprintf("%s,%s", file, string(content)), true)
 	}
 }
 
@@ -44,7 +54,6 @@ func onFileRemoved(message *Message) {
 	if message.From == Self() {
 		return
 	}
-
 	delete(registeredFiles, message.Payload)
 	os.Remove(message.Payload)
 }
@@ -62,9 +71,7 @@ func onFileChanged(message *Message) {
 	hash := hex.EncodeToString(hasher.Sum(nil))
 
 	if _, ok := registeredFiles[fileName]; ok {
-		if registeredFiles[fileName].Hash == hash {
-			return
-		} else {
+		if registeredFiles[fileName].Hash != hash {
 			registeredFiles[fileName].Hash = hash
 			ioutil.WriteFile(fileName, []byte(content), 0755)
 		}
@@ -75,22 +82,22 @@ func onFileChanged(message *Message) {
 	}
 }
 
-func dirSync(dirName string) {
-	ticker := time.NewTicker(5 * time.Second)
+func DirSync(dirName string) {
 	registeredFiles = make(map[string]*File)
 
+	ticker := time.NewTicker(6 * time.Second)
 	go func() {
 		for {
 			<-ticker.C
+
 			_, errStat := os.Lstat(dirName)
 			if errStat != nil {
 				log.Println(errStat)
 				continue
 			}
+
 			dir, _ := os.Open(dirName)
-
 			files, err := dir.Readdir(0)
-
 			if err != nil {
 				log.Println(err)
 				continue
@@ -100,39 +107,35 @@ func dirSync(dirName string) {
 
 			for _, fileInfo := range files {
 				fileName := fmt.Sprintf("%s/%s", dirName, fileInfo.Name())
-				if strings.HasPrefix(fileName, fmt.Sprintf("%s/.", dirName)) {
-					continue
-				}
-				got[fileName] = true
+				if !strings.HasPrefix(fileName, fmt.Sprintf("%s/.", dirName)) {
+					got[fileName] = true
 
-				hasher := sha256.New()
-				f, _ := os.Open(fileName)
-				io.Copy(hasher, f)
-				f.Close()
+					hasher := sha256.New()
+					f, _ := os.Open(fileName)
+					io.Copy(hasher, f)
+					f.Close()
+					hash := hex.EncodeToString(hasher.Sum(nil))
 
-				hash := hex.EncodeToString(hasher.Sum(nil))
-				if _, ok := registeredFiles[fileName]; ok {
-					if registeredFiles[fileName].Hash == hash {
-						// not changed
+					if _, ok := registeredFiles[fileName]; ok {
+						if registeredFiles[fileName].Hash != hash {
+							log.Println("Changed file", fileName)
+							registeredFiles[fileName].Hash = hash
+							sendFile(fileName)
+						}
 					} else {
-						log.Println("Updating file", fileName)
-						registeredFiles[fileName].Hash = hash
+						log.Println("New file", fileName)
+						file := File{Name: fileName, Hash: hash}
+						registeredFiles[fileName] = &file
 						sendFile(fileName)
 					}
-				} else {
-					log.Println("Sending file", fileName)
-					file := File{Name: fileName, Hash: hash}
-					registeredFiles[fileName] = &file
-					sendFile(fileName)
 				}
 			}
 
 			var toRemove []string
 
 			for name, _ := range registeredFiles {
-				if _, ok := got[name]; ok {
-				} else {
-					log.Println("Removing file", name)
+				if _, ok := got[name]; !ok {
+					log.Println("Removed file", name)
 					toRemove = append(toRemove, name)
 				}
 			}
@@ -142,5 +145,6 @@ func dirSync(dirName string) {
 				delete(registeredFiles, name)
 			}
 		}
+
 	}()
 }

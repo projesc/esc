@@ -36,21 +36,13 @@ func pingEvt(message *Message) {
 
 func setEvt(msg *Message) {
 	if msg.From != Self() {
-		parts := strings.Split(msg.Payload, ",")
+		parts := strings.SplitN(msg.Payload, ",", 2)
 		if len(parts) == 2 {
 			log.Printf("Set %s = %s", parts[0], parts[1])
 			kv.Set(parts[0], parts[1], cache.NoExpiration)
 		}
 	}
 }
-
-/*
-func membersCmd(message *Mesage, nodeIn chan *Node) {
-}
-
-func membersEvt(message *Message, nodeIn chan *Node) {
-}
-*/
 
 func joinCmd(message *Message, nodeIn chan *Node) {
 	ip := net.ParseIP(message.Payload)
@@ -70,10 +62,9 @@ func registerBuiltin(nodeIn chan *Node, _ chan string) {
 
 	OnCommand("*", "ping", pingCmd)
 	OnEvent("*", "ping", pingEvt)
-
 	OnEvent("*", "set", setEvt)
-
 	OnCommand("*", "join", func(message *Message) {
 		joinCmd(message, nodeIn)
 	})
+
 }

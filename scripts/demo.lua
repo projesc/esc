@@ -1,5 +1,4 @@
 
-
 set("foo","bar")
 
 foo = get("foo")
@@ -17,9 +16,10 @@ onCommand("*","hello",function(msg)
 end)
 
 i=0
-ticker(2,function()
+tick(2,function()
   log("Sending hello "..i.."!")
   i = i +1
   sendEvent("test","hello")
   return i <= 5
 end)
+

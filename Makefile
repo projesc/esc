@@ -1,26 +1,22 @@
 
 all: clean build
 
-build: dsc-amd64 dsc-arm
+build: esc-amd64 esc-arm
 
-dsc-amd64: 
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -tags netgo -ldflags '-w' -o dsc-amd64
+esc-amd64: 
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -tags netgo -ldflags '-w' -o esc-amd64
 
-dsc-arm: 
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -a -tags netgo -ldflags '-w' -o dsc-arm
+esc-arm: 
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -a -tags netgo -ldflags '-w' -o esc-arm
 
-docker: dsc-amd64
-	docker build -t diogok/dsc .
+docker: esc-amd64
+	docker build -t diogok/esc .
 
-docker-arm: dsc-arm
-	docker build -t diogok/dsc:arm -f Dockerfile.arm .
-
-run:
-	go run *.go
+docker-arm: esc-arm
+	docker build -t diogok/esc:arm -f Dockerfile.arm .
 
 clean:
-	rm -f dsc-amd64
-	rm -f dsc-arm
+	rm -f esc-*
 
 deps:
 	go get github.com/ghodss/yaml
@@ -30,4 +26,5 @@ deps:
 	go get github.com/yuin/gopher-lua
 
 push:
-	docker push diogok/dsc
+	docker push diogok/esc
+

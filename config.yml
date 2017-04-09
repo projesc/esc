@@ -1,2 +1,5 @@
 node: "localhost"
-discovery: 8802
+port: 8901
+discovery: 8902
+scripts: "scripts"
+iface: "wlan0"

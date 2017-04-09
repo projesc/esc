@@ -39,8 +39,16 @@ func luaSendCmd(vm *lua.LState) int {
 	to := vm.ToString(1)
 	name := vm.ToString(2)
 	payload := vm.ToString(3)
+	SendCommand(to, name, payload)
+	return 0
+}
+
+func luaSendCmdC(vm *lua.LState) int {
+	to := vm.ToString(1)
+	name := vm.ToString(2)
+	payload := vm.ToString(3)
 	coalesce := vm.ToBool(4)
-	SendCommand(to, name, payload, coalesce)
+	SendCommandC(to, name, payload, coalesce)
 	return 0
 }
 
@@ -98,6 +106,7 @@ func luaLog(vm *lua.LState) int {
 	log.Println(text)
 	return 0
 }
+
 func luaGet(vm *lua.LState) int {
 	key := vm.ToString(1)
 	value := Get(key)
@@ -151,7 +160,7 @@ func startScript(file string) *Script {
 		File: file,
 	}
 
-	vm.SetGlobal("ticker", vm.NewFunction(luaTicker))
+	vm.SetGlobal("tick", vm.NewFunction(luaTicker))
 	vm.SetGlobal("self", vm.NewFunction(luaSelf))
 	vm.SetGlobal("log", vm.NewFunction(luaLog))
 	vm.SetGlobal("set", vm.NewFunction(luaSet))
@@ -164,36 +173,33 @@ func startScript(file string) *Script {
 	}))
 	vm.SetGlobal("sendEvent", vm.NewFunction(luaSendEvt))
 	vm.SetGlobal("sendCommand", vm.NewFunction(luaSendCmd))
+	vm.SetGlobal("sendCommandC", vm.NewFunction(luaSendCmdC))
 
 	err := vm.DoFile(fmt.Sprintf("%s/%s", config.Scripts, file))
 	if err != nil {
 		log.Println(err)
-		vm.Close()
+		stopScript(&script)
 	}
 
 	return &script
 }
 
 func startScripting() {
-	if config.Scripts == "" {
-		return
-	}
-
 	vms := make(map[string]*Script)
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(4 * time.Second)
 	go func() {
 		for {
 			<-ticker.C
+
 			_, errStat := os.Lstat(config.Scripts)
 			if errStat != nil {
 				log.Println(errStat)
 				continue
 			}
+
 			dir, _ := os.Open(config.Scripts)
-
 			files, err := dir.Readdir(0)
-
 			if err != nil {
 				log.Println(err)
 				continue
@@ -210,14 +216,12 @@ func startScripting() {
 					f, _ := os.Open(fmt.Sprintf("%s/%s", config.Scripts, fileName))
 					io.Copy(hasher, f)
 					f.Close()
-
 					hash := hex.EncodeToString(hasher.Sum(nil))
 
 					if _, ok := vms[fileName]; ok {
-						if vms[fileName].Hash == hash {
-						} else {
-							stopScript(vms[fileName])
+						if vms[fileName].Hash != hash {
 							log.Println("Restarting script", fileName)
+							stopScript(vms[fileName])
 							vms[fileName] = startScript(fileName)
 							vms[fileName].Hash = hash
 						}
@@ -231,8 +235,7 @@ func startScripting() {
 
 			var toRemove []string
 			for name, vm := range vms {
-				if _, ok := got[name]; ok {
-				} else {
+				if _, ok := got[name]; !ok {
 					log.Println("Stoping script", name)
 					stopScript(vm)
 					toRemove = append(toRemove, name)
@@ -244,5 +247,4 @@ func startScripting() {
 			}
 		}
 	}()
-
 }

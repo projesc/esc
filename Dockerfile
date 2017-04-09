@@ -1,5 +1,5 @@
 FROM scratch
 
-ADD dsc-amd64 /dsc
+ADD esc-amd64 /esc
 
-ENTRYPOINT ["/dsc"]
+ENTRYPOINT ["/esc"]

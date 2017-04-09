@@ -20,9 +20,11 @@ func main() {
 	startMessaging(nodeIn, nodeOut)
 	registerBuiltin(nodeIn, nodeOut)
 
-	startScripting()
+	if config.Scripts != "" {
+		startScripting()
+	}
 
-	startDirSync()
+	startDirSync(nodeIn)
 
 	if config.Join != "" {
 		join(nodeIn, nodeOut)

@@ -1,6 +1,5 @@
 FROM scratch
 
-ADD dsc-arm /dsc
+ADD esc-arm /esc
 
-ENTRYPOINT ["/dsc"]
-
+ENTRYPOINT ["/esc"]
