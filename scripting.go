@@ -16,11 +16,14 @@ type Script struct {
 	Lua       *lua.LState
 	Listeners []*Listener
 
+	Active bool
+
 	File string
 	Hash string
 }
 
 func stopScript(script *Script) {
+	script.Active = false
 	for _, listener := range script.Listeners {
 		Off(listener)
 	}
@@ -126,11 +129,14 @@ func luaSelf(vm *lua.LState) int {
 	return 1
 }
 
-func luaTicker(vm *lua.LState) int {
+func luaTicker(script *Script, vm *lua.LState) int {
 	sec := vm.ToInt(1)
 	fun := vm.ToFunction(2)
 	go func() {
 		for {
+			if !script.Active {
+				return
+			}
 			err := vm.CallByParam(lua.P{
 				Fn:      fun,
 				NRet:    1,
@@ -156,11 +162,11 @@ func startScript(file string) *Script {
 	vm := lua.NewState()
 
 	script := Script{
-		Lua:  vm,
-		File: file,
+		Lua:    vm,
+		File:   file,
+		Active: true,
 	}
 
-	vm.SetGlobal("tick", vm.NewFunction(luaTicker))
 	vm.SetGlobal("self", vm.NewFunction(luaSelf))
 	vm.SetGlobal("log", vm.NewFunction(luaLog))
 	vm.SetGlobal("set", vm.NewFunction(luaSet))
@@ -170,6 +176,9 @@ func startScript(file string) *Script {
 	}))
 	vm.SetGlobal("onCommand", vm.NewFunction(func(vm *lua.LState) int {
 		return luaOnCmd(&script, vm)
+	}))
+	vm.SetGlobal("tick", vm.NewFunction(func(vm *lua.LState) int {
+		return tick(&script, vm)
 	}))
 	vm.SetGlobal("sendEvent", vm.NewFunction(luaSendEvt))
 	vm.SetGlobal("sendCommand", vm.NewFunction(luaSendCmd))

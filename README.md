@@ -1,6 +1,6 @@
 # Evented Scripting Cluster (name subject to change)
 
-This project is an study and attempt to create an replicated cluster of scripts to fire events and commands on and off.
+This project is an study and attempt to create a replicated cluster of scripts to fire events and commands on and off.
 
 ## Features
 
@@ -21,7 +21,23 @@ Soon:
 - Docker swarm compatible 
 - Join mode / non-discovery mode
 
-## Usage
+## Quick start
+
+Download the proper binary from the [releases page](https://github.com/diogok/esc/releases):
+
+    $ wget https://github.com/diogok/esc/releases/download/0.0.1/esc-amd64 -O esc
+
+Create scripts directory:
+
+    $ mkdir scripts
+
+Start the program on proper network interface:
+
+    $ ./esc -iface wlan0
+
+Repeat on all nodes, edit the scripts on any one of them.
+
+## Complete usage
 
 Download the binary from the [releases page](https://github.com/diogok/esc/releases).
 
