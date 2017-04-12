@@ -14,7 +14,7 @@ type Message struct {
 	From     string
 	Name     string
 	To       string
-	Payload  string
+	Payload  []byte
 	Coalesce bool
 }
 
@@ -81,11 +81,11 @@ func handle(message *Message) {
 	}
 }
 
-func SendCommand(to string, name string, payload string) {
+func SendCommand(to string, name string, payload []byte) {
 	SendCommandC(to, name, payload, true)
 }
 
-func SendCommandC(to string, name string, payload string, coalesce bool) {
+func SendCommandC(to string, name string, payload []byte, coalesce bool) {
 	log.Printf("Sending command %s to %s\n", name, to)
 
 	msg := Message{
@@ -100,11 +100,11 @@ func SendCommandC(to string, name string, payload string, coalesce bool) {
 	sendQueue <- &msg
 }
 
-func SendEvent(name string, payload string) {
+func SendEvent(name string, payload []byte) {
 	SendEventC(name, payload, false)
 }
 
-func SendEventC(name string, payload string, coalesce bool) {
+func SendEventC(name string, payload []byte, coalesce bool) {
 	log.Printf("Sending event %s\n", name)
 
 	msg := Message{
@@ -203,7 +203,7 @@ func startMessaging(nodeIn chan *Node, nodeOut chan string) {
 			c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", node.Service.AddrV4.String(), config.Port))
 			c.Start()
 			node.Client = c
-			SendCommand(node.Service.Name, "ping", "ping")
+			SendCommand(node.Service.Name, "ping", []byte("ping"))
 		}
 	}()
 

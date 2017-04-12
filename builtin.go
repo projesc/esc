@@ -23,11 +23,11 @@ func Get(key string) string {
 
 func Set(key string, value string) {
 	kv.Set(key, value, cache.NoExpiration)
-	SendEvent("set", fmt.Sprintf("%s,%s", key, value))
+	SendEvent("set", []byte(fmt.Sprintf("%s,%s", key, value)))
 }
 
 func pingCmd(message *Message) {
-	SendEvent("ping", "ping")
+	SendEvent("ping", []byte("ping"))
 }
 
 func pingEvt(message *Message) {
@@ -36,7 +36,7 @@ func pingEvt(message *Message) {
 
 func setEvt(msg *Message) {
 	if msg.From != Self() {
-		parts := strings.SplitN(msg.Payload, ",", 2)
+		parts := strings.SplitN(string(msg.Payload), ",", 2)
 		if len(parts) == 2 {
 			log.Printf("Set %s = %s", parts[0], parts[1])
 			kv.Set(parts[0], parts[1], cache.NoExpiration)
@@ -45,7 +45,7 @@ func setEvt(msg *Message) {
 }
 
 func joinCmd(message *Message, nodeIn chan *Node) {
-	ip := net.ParseIP(message.Payload)
+	ip := net.ParseIP(string(message.Payload))
 	service := mdns.ServiceEntry{
 		Name:   message.From,
 		AddrV4: ip,

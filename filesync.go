@@ -42,20 +42,20 @@ func sendFile(file string) {
 	if err != nil {
 		log.Println(err)
 	} else {
-		SendEventC("fileSync", fmt.Sprintf("%s,%s", file, string(content)), true)
+		SendEventC("fileSync", []byte(fmt.Sprintf("%s,%s", file, content)), true)
 	}
 }
 
 func removeFile(file string) {
-	SendEvent("fileRemoved", file)
+	SendEvent("fileRemoved", []byte(file))
 }
 
 func onFileRemoved(message *Message) {
 	if message.From == Self() {
 		return
 	}
-	delete(registeredFiles, message.Payload)
-	os.Remove(message.Payload)
+	delete(registeredFiles, string(message.Payload))
+	os.Remove(string(message.Payload))
 }
 
 func onFileChanged(message *Message) {
@@ -63,7 +63,7 @@ func onFileChanged(message *Message) {
 		return
 	}
 
-	parts := strings.SplitN(message.Payload, ",", 2)
+	parts := strings.SplitN(string(message.Payload), ",", 2)
 	fileName := parts[0]
 	content := parts[1]
 	hasher := sha256.New()
@@ -107,7 +107,7 @@ func DirSync(dirName string) {
 
 			for _, fileInfo := range files {
 				fileName := fmt.Sprintf("%s/%s", dirName, fileInfo.Name())
-				if !strings.HasPrefix(fileName, fmt.Sprintf("%s/.", dirName)) {
+				if !strings.HasPrefix(fileName, fmt.Sprintf("%s/.", dirName)) && !strings.HasSuffix(fileName, "~") {
 					got[fileName] = true
 
 					hasher := sha256.New()

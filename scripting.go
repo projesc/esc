@@ -34,7 +34,7 @@ func luaMessage(vm *lua.LState, message *Message) *lua.LTable {
 	table := vm.NewTable()
 	vm.SetField(table, "from", lua.LString(message.From))
 	vm.SetField(table, "name", lua.LString(message.Name))
-	vm.SetField(table, "payload", lua.LString(message.Payload))
+	vm.SetField(table, "payload", lua.LString(string(message.Payload)))
 	return table
 }
 
@@ -42,7 +42,7 @@ func luaSendCmd(vm *lua.LState) int {
 	to := vm.ToString(1)
 	name := vm.ToString(2)
 	payload := vm.ToString(3)
-	SendCommand(to, name, payload)
+	SendCommand(to, name, []byte(payload))
 	return 0
 }
 
@@ -51,14 +51,14 @@ func luaSendCmdC(vm *lua.LState) int {
 	name := vm.ToString(2)
 	payload := vm.ToString(3)
 	coalesce := vm.ToBool(4)
-	SendCommandC(to, name, payload, coalesce)
+	SendCommandC(to, name, []byte(payload), coalesce)
 	return 0
 }
 
 func luaSendEvt(vm *lua.LState) int {
 	name := vm.ToString(1)
 	payload := vm.ToString(2)
-	SendEvent(name, payload)
+	SendEvent(name, []byte(payload))
 	return 0
 }
 
@@ -129,7 +129,7 @@ func luaSelf(vm *lua.LState) int {
 	return 1
 }
 
-func luaTicker(script *Script, vm *lua.LState) int {
+func luaTick(script *Script, vm *lua.LState) int {
 	sec := vm.ToInt(1)
 	fun := vm.ToFunction(2)
 	go func() {
@@ -178,7 +178,7 @@ func startScript(file string) *Script {
 		return luaOnCmd(&script, vm)
 	}))
 	vm.SetGlobal("tick", vm.NewFunction(func(vm *lua.LState) int {
-		return tick(&script, vm)
+		return luaTick(&script, vm)
 	}))
 	vm.SetGlobal("sendEvent", vm.NewFunction(luaSendEvt))
 	vm.SetGlobal("sendCommand", vm.NewFunction(luaSendCmd))

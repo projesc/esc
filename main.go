@@ -41,7 +41,7 @@ func join(nodeIn chan *Node, nodeOut chan string) {
 		Command: true,
 		Event:   false,
 		Name:    "join",
-		Payload: config.IPs[0].String(),
+		Payload: []byte(config.IPs[0].String()),
 	}
 	c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", config.Join, config.Port))
 	c.Start()
