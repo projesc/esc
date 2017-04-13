@@ -2,10 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/micro/mdns"
 	"github.com/patrickmn/go-cache"
 	"log"
-	"net"
 	"strings"
 	"time"
 )
@@ -44,27 +42,10 @@ func setEvt(msg *Message) {
 	}
 }
 
-func joinCmd(message *Message, nodeIn chan *Node) {
-	ip := net.ParseIP(string(message.Payload))
-	service := mdns.ServiceEntry{
-		Name:   message.From,
-		AddrV4: ip,
-	}
-	node := Node{
-		Service: &service,
-	}
-	config.Nodes[message.From] = &node
-	nodeIn <- &node
-}
-
-func registerBuiltin(nodeIn chan *Node, _ chan string) {
+func registerBuiltin() {
 	kv = cache.New(6*time.Hour, 1*time.Hour)
 
 	OnCommand("*", "ping", pingCmd)
 	OnEvent("*", "ping", pingEvt)
 	OnEvent("*", "set", setEvt)
-	OnCommand("*", "join", func(message *Message) {
-		joinCmd(message, nodeIn)
-	})
-
 }

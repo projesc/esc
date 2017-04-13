@@ -14,22 +14,22 @@ import (
 
 var registeredFiles map[string]*File
 
-func startDirSync(nodeIn chan *Node) {
+func startDirSync() {
 	OnEvent("*", "fileSync", onFileChanged)
 	OnEvent("*", "fileRemoved", onFileRemoved)
+	OnEvent("*", "connected", onNewNode)
 
 	if config.Scripts != "" {
 		DirSync(config.Scripts)
 	}
 
-	go func() {
-		for node := range nodeIn {
-			log.Println("Sending files cause of new node", node.Service.Name)
-			for name, _ := range registeredFiles {
-				sendFile(name)
-			}
-		}
-	}()
+}
+
+func onNewNode(msg *Message) {
+	log.Println("Sending files cause of new node", string(msg.Payload))
+	for name, _ := range registeredFiles {
+		sendFile(name)
+	}
 }
 
 type File struct {

@@ -16,7 +16,7 @@ func NameOf(node string) string {
 	return fmt.Sprintf("%s._esc._tcp.local.", node)
 }
 
-func startDiscovery(nodeIn chan *Node, nodeOut chan string) {
+func startDiscovery(nodeIn chan<- *Node) {
 	service, err0 := mdns.NewMDNSService(config.Node, "_esc._tcp", "", config.Host, config.Discovery, config.IPs, []string{"esc"})
 	if err0 != nil {
 		panic(err0)
@@ -44,7 +44,7 @@ func startDiscovery(nodeIn chan *Node, nodeOut chan string) {
 	go func() {
 		for {
 			<-ticker.C
-			mdns.Lookup("_dsc._tcp", entries)
+			mdns.Lookup("_esc._tcp", entries)
 		}
 	}()
 }

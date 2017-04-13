@@ -137,7 +137,7 @@ func send(msg *Message) {
 	}
 }
 
-func startMessaging(nodeIn chan *Node, nodeOut chan string) {
+func startMessaging(nodeIn <-chan *Node) {
 	sendQueue = make(chan *Message)
 	handleQueue = make(chan *Message)
 
@@ -204,27 +204,24 @@ func startMessaging(nodeIn chan *Node, nodeOut chan string) {
 			c.Start()
 			node.Client = c
 			SendCommand(node.Service.Name, "ping", []byte("ping"))
+			SendEvent("connected", []byte(node.Service.Name))
 		}
 	}()
 
-	go func() {
-		for nodeName := range nodeOut {
-			log.Printf("Node out %s\n", nodeName)
-			config.Nodes[nodeName].Client.Stop()
-			delete(config.Nodes, nodeName)
-		}
-	}()
-
-	ticker := time.NewTicker(30 * time.Second)
-	go func() {
-		for {
-			<-ticker.C
-			for name, node := range config.Nodes {
-				if node.Client.Stats.Snapshot().ReadErrors > 10 {
-					nodeOut <- name
+	/*
+		ticker := time.NewTicker(30 * time.Second)
+		go func() {
+			for {
+				<-ticker.C
+				for name, node := range config.Nodes {
+					if node.Client.Stats.Snapshot().ReadErrors > 10 {
+						log.Printf("Node out %s\n", name)
+						config.Nodes[name].Client.Stop()
+						delete(config.Nodes, name)
+					}
 				}
 			}
-		}
-	}()
+		}()
+	*/
 
 }
