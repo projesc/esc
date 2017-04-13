@@ -92,8 +92,8 @@ func DirSync(dirName string) {
 
 			_, errStat := os.Lstat(dirName)
 			if errStat != nil {
-				log.Println(errStat)
-				continue
+				log.Println("Not syncing", dirName, errStat)
+				return
 			}
 
 			dir, _ := os.Open(dirName)

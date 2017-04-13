@@ -44,7 +44,6 @@ func setEvt(msg *Message) {
 
 func registerBuiltin() {
 	kv = cache.New(6*time.Hour, 1*time.Hour)
-
 	OnCommand("*", "ping", pingCmd)
 	OnEvent("*", "ping", pingEvt)
 	OnEvent("*", "set", setEvt)

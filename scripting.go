@@ -203,8 +203,8 @@ func startScripting() {
 
 			_, errStat := os.Lstat(config.Scripts)
 			if errStat != nil {
-				log.Println(errStat)
-				continue
+				log.Println("Not runing scripts on", config.Scripts, errStat)
+				return
 			}
 
 			dir, _ := os.Open(config.Scripts)
@@ -227,31 +227,42 @@ func startScripting() {
 					f.Close()
 					hash := hex.EncodeToString(hasher.Sum(nil))
 
+					stop := false
+					start := false
 					if _, ok := vms[fileName]; ok {
 						if vms[fileName].Hash != hash {
-							log.Println("Restarting script", fileName)
-							stopScript(vms[fileName])
-							vms[fileName] = startScript(fileName)
-							vms[fileName].Hash = hash
+							stop = true
+							start = true
 						}
 					} else {
+						start = true
+					}
+
+					if stop {
+						log.Println("Stoping script", fileName)
+						stopScript(vms[fileName])
+						delete(vms, fileName)
+					}
+
+					if start {
 						log.Println("Starting script", fileName)
-						vms[fileName] = startScript(fileName)
-						vms[fileName].Hash = hash
+						script := startScript(fileName)
+						script.Hash = hash
+						vms[fileName] = script
 					}
 				}
 			}
 
 			var toRemove []string
-			for name, vm := range vms {
+			for name, _ := range vms {
 				if _, ok := got[name]; !ok {
-					log.Println("Stoping script", name)
-					stopScript(vm)
 					toRemove = append(toRemove, name)
 				}
 			}
 
 			for _, name := range toRemove {
+				log.Println("Stoping script", name)
+				stopScript(vms[name])
 				delete(vms, name)
 			}
 		}

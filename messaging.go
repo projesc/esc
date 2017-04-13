@@ -26,7 +26,6 @@ type Listener struct {
 
 var sendQueue chan *Message
 var handleQueue chan *Message
-
 var eventListeners []*Listener
 var commandListeners []*Listener
 
@@ -119,22 +118,33 @@ func SendEventC(name string, payload []byte, coalesce bool) {
 	sendQueue <- &msg
 }
 
-func send(msg *Message) {
-	msg.From = Self()
-	if msg.To == "*" {
-		for name, node := range config.Nodes {
-			msg.To = name
+func sendSingle(to string, msg *Message) {
+	if node, gotNode := config.Nodes[to]; gotNode {
+		if node.Client != nil {
 			_, cerr := node.Client.Call(msg)
 			if cerr != nil {
 				log.Println(cerr)
 			}
+			log.Println("Sent", msg.Name)
+		} else {
+			log.Println("No client", msg.To)
 		}
 	} else {
-		_, cerr := config.Nodes[msg.To].Client.Call(msg)
-		if cerr != nil {
-			log.Println(cerr)
-		}
+		log.Println("No node", msg.To)
 	}
+}
+
+func send(msg *Message) {
+	configLock.RLock()
+	msg.From = Self()
+	if msg.To == "*" {
+		for name, _ := range config.Nodes {
+			sendSingle(name, msg)
+		}
+	} else {
+		sendSingle(msg.To, msg)
+	}
+	configLock.RUnlock()
 }
 
 func startMessaging(nodeIn <-chan *Node) {
@@ -203,25 +213,28 @@ func startMessaging(nodeIn <-chan *Node) {
 			c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", node.Service.AddrV4.String(), config.Port))
 			c.Start()
 			node.Client = c
+			configLock.Lock()
+			config.Nodes[node.Service.Name] = node
+			configLock.Unlock()
 			SendCommand(node.Service.Name, "ping", []byte("ping"))
 			SendEvent("connected", []byte(node.Service.Name))
 		}
 	}()
 
-	/*
-		ticker := time.NewTicker(30 * time.Second)
-		go func() {
-			for {
-				<-ticker.C
-				for name, node := range config.Nodes {
-					if node.Client.Stats.Snapshot().ReadErrors > 10 {
-						log.Printf("Node out %s\n", name)
-						config.Nodes[name].Client.Stop()
-						delete(config.Nodes, name)
-					}
+	ticker := time.NewTicker(10 * time.Second)
+	go func() {
+		for {
+			<-ticker.C
+			configLock.RLock()
+			for name, node := range config.Nodes {
+				snap := node.Client.Stats.Snapshot()
+				if snap.ReadErrors > 10 || snap.WriteErrors > 10 || snap.AcceptErrors > 10 || snap.DialErrors > 10 {
+					log.Printf("Node out %s\n", name)
+					config.Nodes[name].Client.Stop()
+					delete(config.Nodes, name)
 				}
 			}
-		}()
-	*/
-
+			configLock.RUnlock()
+		}
+	}()
 }

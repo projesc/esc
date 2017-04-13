@@ -1,10 +1,15 @@
 package main
 
+import (
+	"sync"
+)
+
 var config *Config
+var configLock *sync.RWMutex
 
 func main() {
 	config = LoadConfig()
-
+	configLock = &sync.RWMutex{}
 	nodeIn := make(chan *Node)
 
 	if config.Discovery != 0 {
