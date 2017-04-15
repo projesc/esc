@@ -204,7 +204,7 @@ func startScripting() {
 			_, errStat := os.Lstat(config.Scripts)
 			if errStat != nil {
 				log.Println("Not runing scripts on", config.Scripts, errStat)
-				return
+				continue
 			}
 
 			dir, _ := os.Open(config.Scripts)

@@ -1,16 +1,15 @@
 package main
 
 import (
-	"sync"
+	"github.com/micro/mdns"
 )
 
 var config *Config
-var configLock *sync.RWMutex
 
 func main() {
 	config = LoadConfig()
-	configLock = &sync.RWMutex{}
-	nodeIn := make(chan *Node)
+
+	nodeIn := make(chan *mdns.ServiceEntry)
 
 	if config.Discovery != 0 {
 		startDiscovery(nodeIn)
@@ -27,4 +26,5 @@ func main() {
 
 	end := make(chan bool, 1)
 	<-end
+
 }

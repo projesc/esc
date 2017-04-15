@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/diogok/gorpc"
+	"github.com/micro/mdns"
 	"github.com/patrickmn/go-cache"
 	"log"
 	"time"
@@ -26,6 +27,7 @@ type Listener struct {
 
 var sendQueue chan *Message
 var handleQueue chan *Message
+
 var eventListeners []*Listener
 var commandListeners []*Listener
 
@@ -118,45 +120,16 @@ func SendEventC(name string, payload []byte, coalesce bool) {
 	sendQueue <- &msg
 }
 
-func sendSingle(to string, msg *Message) {
-	if node, gotNode := config.Nodes[to]; gotNode {
-		if node.Client != nil {
-			_, cerr := node.Client.Call(msg)
-			if cerr != nil {
-				log.Println(cerr)
-			}
-			log.Println("Sent", msg.Name)
-		} else {
-			log.Println("No client", msg.To)
-		}
-	} else {
-		log.Println("No node", msg.To)
-	}
-}
-
-func send(msg *Message) {
-	configLock.RLock()
-	msg.From = Self()
-	if msg.To == "*" {
-		for name, _ := range config.Nodes {
-			sendSingle(name, msg)
-		}
-	} else {
-		sendSingle(msg.To, msg)
-	}
-	configLock.RUnlock()
-}
-
-func startMessaging(nodeIn <-chan *Node) {
-	sendQueue = make(chan *Message)
-	handleQueue = make(chan *Message)
+func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
+	sendQueue = make(chan *Message, 24)
+	handleQueue = make(chan *Message, 24)
 
 	gorpc.RegisterType(&Message{})
 
 	s := gorpc.NewTCPServer(fmt.Sprintf("0.0.0.0:%d", config.Port), func(_ string, req interface{}) interface{} {
 		message := req.(*Message)
 		handleQueue <- message
-		return req
+		return nil
 	})
 
 	err := s.Start()
@@ -187,8 +160,11 @@ func startMessaging(nodeIn <-chan *Node) {
 		}
 	}()
 
+	clients := make(map[string]*gorpc.Client)
+
 	go func() {
 		for msg := range sendQueue {
+			msg.From = Self()
 			shouldSend := true
 			if msg.Coalesce {
 				full := fmt.Sprintf("%s,%s,%s", msg.To, msg.Name, msg.Payload)
@@ -200,7 +176,15 @@ func startMessaging(nodeIn <-chan *Node) {
 			}
 
 			if shouldSend {
-				send(msg)
+				go func() {
+					if msg.To == "*" {
+						for _, c := range clients {
+							c.Call(msg)
+						}
+					} else {
+						clients[msg.To].Call(msg)
+					}
+				}()
 			} else {
 				log.Println("Dropping send", msg.Name)
 			}
@@ -208,16 +192,13 @@ func startMessaging(nodeIn <-chan *Node) {
 	}()
 
 	go func() {
-		for node := range nodeIn {
-			log.Println("New node", node.Service.Name)
-			c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", node.Service.AddrV4.String(), config.Port))
+		for service := range nodeIn {
+			log.Println("New node", service.Name)
+			c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", service.AddrV4.String(), config.Port))
 			c.Start()
-			node.Client = c
-			configLock.Lock()
-			config.Nodes[node.Service.Name] = node
-			configLock.Unlock()
-			SendCommand(node.Service.Name, "ping", []byte("ping"))
-			SendEvent("connected", []byte(node.Service.Name))
+			clients[service.Name] = c
+			SendCommand(service.Name, "ping", []byte("ping"))
+			SendEvent("connected", []byte(service.Name))
 		}
 	}()
 
@@ -225,16 +206,15 @@ func startMessaging(nodeIn <-chan *Node) {
 	go func() {
 		for {
 			<-ticker.C
-			configLock.RLock()
-			for name, node := range config.Nodes {
-				snap := node.Client.Stats.Snapshot()
+			for name, client := range clients {
+				snap := client.Stats.Snapshot()
 				if snap.ReadErrors > 10 || snap.WriteErrors > 10 || snap.AcceptErrors > 10 || snap.DialErrors > 10 {
 					log.Printf("Node out %s\n", name)
-					config.Nodes[name].Client.Stop()
-					delete(config.Nodes, name)
+					client.Stop()
+					delete(clients, name)
 				}
 			}
-			configLock.RUnlock()
 		}
 	}()
+
 }

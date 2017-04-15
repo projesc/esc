@@ -9,16 +9,19 @@ import (
 	"time"
 )
 
+var serviceName string
+
 func Self() string {
-	return fmt.Sprintf("%s._esc._tcp.local.", config.Node)
+	return fmt.Sprintf("%s.%s.local.", config.Node, serviceName)
 }
 
 func NameOf(node string) string {
-	return fmt.Sprintf("%s._esc._tcp.local.", node)
+	return fmt.Sprintf("%s.%s.local.", node, serviceName)
 }
 
-func startDiscovery(nodeIn chan<- *Node) {
-	service, err0 := mdns.NewMDNSService(config.Node, "_esc._tcp", "", config.Host, config.Discovery, config.IPs, []string{"esc"})
+func startDiscovery(nodeIn chan<- *mdns.ServiceEntry) {
+	serviceName = "_esc._tcp"
+	service, err0 := mdns.NewMDNSService(config.Node, serviceName, "", config.Host, config.Discovery, config.IPs, []string{"esc"})
 	if err0 != nil {
 		panic(err0)
 	}
@@ -28,17 +31,14 @@ func startDiscovery(nodeIn chan<- *Node) {
 		panic(err1)
 	}
 
-	found := cache.New(24*time.Second, 5*time.Second)
+	found := cache.New(24*time.Second, 16*time.Second)
 	entries := make(chan *mdns.ServiceEntry, 4)
 	go func() {
 		for entry := range entries {
-			if strings.HasSuffix(entry.Name, "_esc._tcp.local.") {
+			if strings.HasSuffix(entry.Name, fmt.Sprintf("%s.local.", serviceName)) {
 				if _, ok := found.Get(entry.Name); !ok {
 					log.Printf("Found node %s\n", entry.Name)
-					node := Node{
-						Service: entry,
-					}
-					nodeIn <- &node
+					nodeIn <- entry
 				}
 				found.Set(entry.Name, entry.Name, cache.DefaultExpiration)
 			}

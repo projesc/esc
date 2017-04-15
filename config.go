@@ -2,34 +2,23 @@ package main
 
 import (
 	"flag"
-	"github.com/diogok/gorpc"
 	"github.com/ghodss/yaml"
-	"github.com/micro/mdns"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
 )
 
-type Node struct {
-	Client  *gorpc.Client
-	Service *mdns.ServiceEntry
-}
-
 type Config struct {
-	Host string
-
+	Host      string
 	Node      string `json:"node"`
 	Join      string `json:"join"`
 	IFace     string `json:"iface"`
 	Discovery int    `json:"discovery"`
 	Port      int    `json:"port"`
 	Scripts   string `json:"scripts"`
-
-	Net *net.Interface
-	IPs []net.IP
-
-	Nodes map[string]*Node
+	Net       *net.Interface
+	IPs       []net.IP
 }
 
 func defaultConfig() Config {
@@ -44,7 +33,6 @@ func defaultConfig() Config {
 		Port:      8901,
 		Discovery: 8902,
 		IFace:     "eth0",
-		Nodes:     make(map[string]*Node),
 		Scripts:   "scripts",
 	}
 
@@ -56,14 +44,12 @@ func LoadConfig() *Config {
 
 	defaultConfig := defaultConfig()
 
-	config.Nodes = defaultConfig.Nodes
-
-	if len(os.Args) > 1 {
+	if len(os.Args) > 1 && len(os.Args)%2 == 0 {
 		configFile := os.Args[len(os.Args)-1]
 
 		_, err := os.Stat(configFile)
 		var fileConfig Config
-		if !os.IsNotExist(err) {
+		if err == nil {
 			content, err0 := ioutil.ReadFile(configFile)
 			if err0 != nil {
 				panic(err0)
@@ -125,6 +111,5 @@ func LoadConfig() *Config {
 	}
 
 	log.Printf("%v\n", config)
-
 	return &config
 }
