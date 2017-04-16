@@ -120,6 +120,19 @@ func SendEventC(name string, payload []byte, coalesce bool) {
 	sendQueue <- &msg
 }
 
+func should(recent *cache.Cache, msg *Message) (should bool) {
+	should = true
+	if msg.Coalesce {
+		full := fmt.Sprintf("%s,%s,%s", msg.To, msg.Name, msg.Payload)
+		_, shouldNot := recent.Get(full)
+		recent.Set(full, msg.Name, cache.DefaultExpiration)
+		if shouldNot {
+			should = false
+		}
+	}
+	return should
+}
+
 func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
 	sendQueue = make(chan *Message, 24)
 	handleQueue = make(chan *Message, 24)
@@ -137,84 +150,61 @@ func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
 		panic(err)
 	}
 
+	clients := make(map[string]*gorpc.Client)
 	recentSend := cache.New(2*time.Second, 2*time.Second)
 	recentHandle := cache.New(2*time.Second, 2*time.Second)
-
-	go func() {
-		for msg := range handleQueue {
-			shouldHandle := true
-			if msg.Coalesce {
-				full := fmt.Sprintf("%s,%s", msg.Name, msg.Payload)
-				_, shouldNotHandle := recentHandle.Get(full)
-				recentHandle.Set(full, msg.Name, cache.DefaultExpiration)
-				if shouldNotHandle {
-					shouldHandle = false
-				}
-			}
-
-			if shouldHandle {
-				handle(msg)
-			} else {
-				log.Println("Dropping handle", msg.Name)
-			}
-		}
-	}()
-
-	clients := make(map[string]*gorpc.Client)
-
-	go func() {
-		for msg := range sendQueue {
-			msg.From = Self()
-			shouldSend := true
-			if msg.Coalesce {
-				full := fmt.Sprintf("%s,%s,%s", msg.To, msg.Name, msg.Payload)
-				_, shouldNotSend := recentSend.Get(full)
-				recentSend.Set(full, msg.Name, cache.DefaultExpiration)
-				if shouldNotSend {
-					shouldSend = false
-				}
-			}
-
-			if shouldSend {
-				go func() {
-					if msg.To == "*" {
-						for _, c := range clients {
-							c.Call(msg)
-						}
-					} else {
-						clients[msg.To].Call(msg)
-					}
-				}()
-			} else {
-				log.Println("Dropping send", msg.Name)
-			}
-		}
-	}()
-
-	go func() {
-		for service := range nodeIn {
-			log.Println("New node", service.Name)
-			c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", service.AddrV4.String(), config.Port))
-			c.Start()
-			clients[service.Name] = c
-			SendCommand(service.Name, "ping", []byte("ping"))
-			SendEvent("connected", []byte(service.Name))
-		}
-	}()
-
 	ticker := time.NewTicker(10 * time.Second)
+
 	go func() {
 		for {
-			<-ticker.C
-			for name, client := range clients {
-				snap := client.Stats.Snapshot()
-				if snap.ReadErrors > 10 || snap.WriteErrors > 10 || snap.AcceptErrors > 10 || snap.DialErrors > 10 {
-					log.Printf("Node out %s\n", name)
-					client.Stop()
-					delete(clients, name)
+			select {
+			case service := <-nodeIn:
+				log.Println("New node", service.Name)
+				c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", service.AddrV4.String(), config.Port))
+				c.Start()
+				clients[service.Name] = c
+				SendCommandC(service.Name, "ping", []byte("ping"), false)
+				SendEvent("connected", []byte(service.Name))
+			case msg := <-handleQueue:
+				if should(recentHandle, msg) {
+					log.Println("Handling", msg.Name, msg.From)
+					handle(msg)
+				} else {
+					log.Println("Not handling", msg.Name, msg.From)
+				}
+			case msg := <-sendQueue:
+				msg.From = Self()
+				if should(recentSend, msg) {
+					log.Println("Sending", msg.Name, msg.To)
+					var toSend []*gorpc.Client
+					if msg.To == "*" {
+						for _, c := range clients {
+							toSend = append(toSend, c)
+						}
+					} else {
+						if c, ok := clients[msg.To]; ok {
+							toSend = append(toSend, c)
+						}
+					}
+
+					go func() {
+						for _, c := range toSend {
+							c.Call(msg)
+						}
+					}()
+				} else {
+					log.Println("Not sending", msg.Name, msg.To)
+				}
+			case <-ticker.C:
+				for name, client := range clients {
+					snap := client.Stats.Snapshot()
+					if snap.ReadErrors > 10 || snap.WriteErrors > 10 || snap.AcceptErrors > 10 || snap.DialErrors > 10 {
+						log.Printf("Node out %s\n", name)
+						client.Stop()
+						delete(clients, name)
+					}
 				}
 			}
 		}
 	}()
-
 }
