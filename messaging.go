@@ -31,6 +31,9 @@ var handleQueue chan *Message
 var eventListeners []*Listener
 var commandListeners []*Listener
 
+var evtListeners chan *Listener
+var cmdListeners chan *Listener
+
 func Off(listener *Listener) {
 	for i, registered := range eventListeners {
 		if registered == listener {
@@ -46,13 +49,13 @@ func Off(listener *Listener) {
 
 func OnEvent(from string, name string, handler func(message *Message)) *Listener {
 	listener := Listener{From: from, Name: name, Handler: handler}
-	eventListeners = append(eventListeners, &listener)
+	cmdListeners <- &listener
 	return &listener
 }
 
 func OnCommand(from string, name string, handler func(message *Message)) *Listener {
 	listener := Listener{From: from, Name: name, Handler: handler}
-	commandListeners = append(commandListeners, &listener)
+	evtListeners <- &listener
 	return &listener
 }
 
@@ -87,7 +90,7 @@ func SendCommand(to string, name string, payload []byte) {
 }
 
 func SendCommandC(to string, name string, payload []byte, coalesce bool) {
-	log.Printf("Sending command %s to %s\n", name, to)
+	log.Printf("Queue command %s to %s\n", name, to)
 
 	msg := Message{
 		To:       to,
@@ -106,7 +109,7 @@ func SendEvent(name string, payload []byte) {
 }
 
 func SendEventC(name string, payload []byte, coalesce bool) {
-	log.Printf("Sending event %s\n", name)
+	log.Printf("Queue event %s\n", name)
 
 	msg := Message{
 		To:       "*",
@@ -134,8 +137,11 @@ func should(recent *cache.Cache, msg *Message) (should bool) {
 }
 
 func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
-	sendQueue = make(chan *Message, 24)
-	handleQueue = make(chan *Message, 24)
+	sendQueue = make(chan *Message, 4)
+	handleQueue = make(chan *Message, 44)
+
+	evtListeners = make(chan *Listener, 4)
+	cmdListeners = make(chan *Listener, 4)
 
 	gorpc.RegisterType(&Message{})
 
@@ -153,11 +159,15 @@ func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
 	clients := make(map[string]*gorpc.Client)
 	recentSend := cache.New(2*time.Second, 2*time.Second)
 	recentHandle := cache.New(2*time.Second, 2*time.Second)
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 
 	go func() {
 		for {
 			select {
+			case listener := <-evtListeners:
+				commandListeners = append(commandListeners, listener)
+			case listener := <-cmdListeners:
+				eventListeners = append(eventListeners, listener)
 			case service := <-nodeIn:
 				log.Println("New node", service.Name)
 				c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", service.AddrV4.String(), config.Port))

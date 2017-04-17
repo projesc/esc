@@ -1,16 +1,14 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
 	"github.com/yuin/gopher-lua"
-	"io"
 	"log"
-	"os"
 	"strings"
 	"time"
 )
+
+var calls chan *Call
+var callbacks chan *Callback
 
 type Script struct {
 	Lua       *lua.LState
@@ -20,6 +18,18 @@ type Script struct {
 
 	File string
 	Hash string
+}
+
+type Call struct {
+	Message *Message
+	Handler *lua.LFunction
+	Script  *Script
+}
+
+type Callback struct {
+	Back   chan bool
+	Script *Script
+	Fun    *lua.LFunction
 }
 
 func stopScript(script *Script) {
@@ -68,18 +78,10 @@ func luaOnCmd(script *Script, vm *lua.LState) int {
 	handler := vm.ToFunction(3)
 
 	listener := OnCommand(from, name, func(message *Message) {
-		err := vm.CallByParam(lua.P{
-			Fn:      handler,
-			NRet:    0,
-			Protect: true,
-		}, luaMessage(vm, message))
-		if err != nil {
-			log.Println(err)
-		}
+		calls <- &Call{message, handler, script}
 	})
 
 	script.Listeners = append(script.Listeners, listener)
-
 	return 0
 }
 
@@ -89,18 +91,10 @@ func luaOnEvt(script *Script, vm *lua.LState) int {
 	handler := vm.ToFunction(3)
 
 	listener := OnEvent(from, name, func(message *Message) {
-		err := vm.CallByParam(lua.P{
-			Fn:      handler,
-			NRet:    0,
-			Protect: true,
-		}, luaMessage(vm, message))
-		if err != nil {
-			log.Println(err)
-		}
+		calls <- &Call{message, handler, script}
 	})
 
 	script.Listeners = append(script.Listeners, listener)
-
 	return 0
 }
 
@@ -132,26 +126,18 @@ func luaSelf(vm *lua.LState) int {
 func luaTick(script *Script, vm *lua.LState) int {
 	sec := vm.ToInt(1)
 	fun := vm.ToFunction(2)
+
+	ticker := time.NewTicker(time.Duration(sec) * time.Second)
 	go func() {
 		for {
-			if !script.Active {
-				return
-			}
-			err := vm.CallByParam(lua.P{
-				Fn:      fun,
-				NRet:    1,
-				Protect: true,
-			})
-			if err != nil {
-				log.Println(err)
-				return
+			back := make(chan bool, 1)
+			callback := Callback{Script: script, Fun: fun, Back: back}
+			callbacks <- &callback
+			ok := <-back
+			if ok && script.Active {
+				<-ticker.C
 			} else {
-				ret := vm.Get(-1)
-				if ret == lua.LTrue {
-					time.Sleep(time.Duration(sec) * time.Second)
-				} else {
-					return
-				}
+				return
 			}
 		}
 	}()
@@ -184,7 +170,7 @@ func startScript(file string) *Script {
 	vm.SetGlobal("sendCommand", vm.NewFunction(luaSendCmd))
 	vm.SetGlobal("sendCommandC", vm.NewFunction(luaSendCmdC))
 
-	err := vm.DoFile(fmt.Sprintf("%s/%s", config.Scripts, file))
+	err := vm.DoFile(file)
 	if err != nil {
 		log.Println(err)
 		stopScript(&script)
@@ -194,76 +180,65 @@ func startScript(file string) *Script {
 }
 
 func startScripting() {
-	vms := make(map[string]*Script)
+	scripts := make(map[string]*Script)
 
-	ticker := time.NewTicker(4 * time.Second)
+	detected := make(chan string, 4)
+	start := make(chan string, 4)
+	stop := make(chan string, 4)
+
+	calls = make(chan *Call, 4)
+	callbacks = make(chan *Callback, 4)
+
+	OnEvent(Self(), "fileSync", func(msg *Message) {
+		parts := strings.SplitN(string(msg.Payload), ",", 2)
+		detected <- parts[0]
+	})
+
+	OnEvent(Self(), "fileRemoved", func(msg *Message) {
+		name := string(msg.Payload)
+		if _, ok := scripts[name]; ok {
+			stop <- name
+		}
+	})
+
 	go func() {
 		for {
-			<-ticker.C
-
-			_, errStat := os.Lstat(config.Scripts)
-			if errStat != nil {
-				log.Println("Not runing scripts on", config.Scripts, errStat)
-				continue
-			}
-
-			dir, _ := os.Open(config.Scripts)
-			files, err := dir.Readdir(0)
-			if err != nil {
-				log.Println(err)
-				continue
-			}
-
-			got := make(map[string]bool)
-
-			for _, fileInfo := range files {
-				fileName := fileInfo.Name()
-				if strings.HasSuffix(fileName, ".lua") {
-					got[fileName] = true
-
-					hasher := sha256.New()
-					f, _ := os.Open(fmt.Sprintf("%s/%s", config.Scripts, fileName))
-					io.Copy(hasher, f)
-					f.Close()
-					hash := hex.EncodeToString(hasher.Sum(nil))
-
-					stop := false
-					start := false
-					if _, ok := vms[fileName]; ok {
-						if vms[fileName].Hash != hash {
-							stop = true
-							start = true
-						}
-					} else {
-						start = true
+			select {
+			case name := <-detected:
+				if strings.HasSuffix(name, ".lua") {
+					if _, ok := scripts[name]; ok {
+						stop <- name
 					}
-
-					if stop {
-						log.Println("Stoping script", fileName)
-						stopScript(vms[fileName])
-						delete(vms, fileName)
-					}
-
-					if start {
-						log.Println("Starting script", fileName)
-						script := startScript(fileName)
-						script.Hash = hash
-						vms[fileName] = script
-					}
+					start <- name
 				}
-			}
-
-			var toRemove []string
-			for name, _ := range vms {
-				if _, ok := got[name]; !ok {
-					toRemove = append(toRemove, name)
-				}
-			}
-
-			for _, name := range toRemove {
+			case name := <-stop:
 				log.Println("Stoping script", name)
-				stopScript(vms[name])
-				delete(vms, name)
+				stopScript(scripts[name])
+				delete(scripts, name)
+			case name := <-start:
+				log.Println("Starting script", name)
+				scripts[name] = startScript(name)
+			case call := <-calls:
+				err := call.Script.Lua.CallByParam(lua.P{
+					Fn:      call.Handler,
+					NRet:    0,
+					Protect: true,
+				}, luaMessage(call.Script.Lua, call.Message))
+				if err != nil {
+					log.Println(err)
+				}
+			case call := <-callbacks:
+				err := call.Script.Lua.CallByParam(lua.P{
+					Fn:      call.Fun,
+					NRet:    1,
+					Protect: true,
+				})
+				if err != nil {
+					log.Println(err)
+					call.Back <- false
+				} else {
+					call.Back <- call.Script.Lua.Get(-1) == lua.LTrue
+				}
 			}
 		}
 	}()
