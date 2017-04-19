@@ -42,9 +42,19 @@ func setEvt(msg *Message) {
 	}
 }
 
+func syncKv(msg *Message) {
+	if string(msg.Payload) == Self() {
+		return
+	}
+	for k, v := range kv.Items() {
+		SendEvent("set", []byte(fmt.Sprintf("%s,%s", k, v.Object.(string))))
+	}
+}
+
 func registerBuiltin() {
 	kv = cache.New(6*time.Hour, 1*time.Hour)
 	OnCommand("*", "ping", pingCmd)
 	OnEvent("*", "ping", pingEvt)
 	OnEvent("*", "set", setEvt)
+	OnEvent(Self(), "connected", syncKv)
 }
