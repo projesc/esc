@@ -165,13 +165,13 @@ func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
 		for {
 			select {
 			case listener := <-evtListeners:
-				log.Println("--->evtlist")
+				log.Println("-->evtlist")
 				eventListeners = append(eventListeners, listener)
 			case listener := <-cmdListeners:
-				log.Println("--->cmdlist")
+				log.Println("-->cmdlist")
 				commandListeners = append(commandListeners, listener)
 			case service := <-nodeIn:
-				log.Println("--->New node", service.Name)
+				log.Println("-->New node", service.Name)
 				c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", service.AddrV4.String(), config.Port))
 				c.Start()
 				clients[service.Name] = c
@@ -186,7 +186,7 @@ func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
 					log.Println("Not handling", msg.Name, msg.From)
 				}
 			case msg := <-sendQueue:
-				log.Println("--->send")
+				log.Println("-->send")
 				msg.From = Self()
 				if should(recentSend, msg) {
 					log.Println("Sending", msg.Name, msg.To)
@@ -210,7 +210,7 @@ func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
 					log.Println("Not sending", msg.Name, msg.To)
 				}
 			case <-ticker.C:
-				log.Println("---->tick")
+				log.Println("-->tick")
 				for name, client := range clients {
 					snap := client.Stats.Snapshot()
 					if snap.ReadErrors > 10 || snap.WriteErrors > 10 || snap.AcceptErrors > 10 || snap.DialErrors > 10 {
