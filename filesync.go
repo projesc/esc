@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -18,13 +19,14 @@ var newNode chan string
 type File struct {
 	Name    string
 	Hash    string
-	Content string
+	Time    time.Time
+	Content []byte
 }
 
 func startDirSync() {
-	newNode = make(chan string)
-	fileIn = make(chan *File)
-	fileRm = make(chan string)
+	newNode = make(chan string, 4)
+	fileIn = make(chan *File, 4)
+	fileRm = make(chan string, 4)
 
 	OnEvent("*", "fileSync", onFileChanged)
 	OnEvent("*", "fileRemoved", onFileRemoved)
@@ -55,16 +57,22 @@ func onFileChanged(message *Message) {
 		return
 	}
 
-	parts := strings.SplitN(string(message.Payload), ",", 2)
+	parts := strings.SplitN(string(message.Payload), ",", 3)
 	fileName := parts[0]
-	content := parts[1]
+
+	time := time.Now()
+	time.UnmarshalText([]byte(parts[1]))
+
+	content, _ := base64.StdEncoding.DecodeString(parts[2])
+
 	hasher := sha256.New()
-	hasher.Write([]byte(content))
+	hasher.Write(content)
 	hash := hex.EncodeToString(hasher.Sum(nil))
 
 	file := File{
 		Name:    fileName,
 		Content: content,
+		Time:    time,
 		Hash:    hash,
 	}
 	fileIn <- &file
@@ -87,14 +95,19 @@ func DirSync(dirName string) {
 			case <-newNode:
 				log.Println("New node, sending files")
 				for _, file := range registeredFiles {
-					SendEventC("fileSync", []byte(fmt.Sprintf("%s,%s", file.Name, file.Content)), true)
+					time, _ := file.Time.MarshalText()
+					SendEventC("fileSync", []byte(fmt.Sprintf("%s,%s,%s", file.Name, time, base64.StdEncoding.EncodeToString(file.Content))), true)
 				}
 			case file := <-fileIn:
 				log.Println("Got new file", file.Name)
 				if _, ok := registeredFiles[file.Name]; !ok {
 					ioutil.WriteFile(file.Name, []byte(file.Content), 0755)
 				} else if registeredFiles[file.Name].Hash != file.Hash {
-					ioutil.WriteFile(file.Name, []byte(file.Content), 0755)
+					if registeredFiles[file.Name].Time.Before(file.Time) {
+						ioutil.WriteFile(file.Name, []byte(file.Content), 0755)
+					} else {
+						log.Println("Our", file.Name, "is older")
+					}
 				}
 				registeredFiles[file.Name] = file
 			case file := <-fileRm:
@@ -110,6 +123,7 @@ func DirSync(dirName string) {
 
 					if !strings.HasPrefix(fileName, fmt.Sprintf("%s/.", dirName)) && !strings.HasSuffix(fileName, "~") {
 						got[fileName] = true
+
 						content, err := ioutil.ReadFile(fileName)
 						if err != nil {
 							log.Println(err)
@@ -122,7 +136,8 @@ func DirSync(dirName string) {
 
 						file := File{
 							Name:    fileName,
-							Content: string(content),
+							Content: content,
+							Time:    fileInfo.ModTime(),
 							Hash:    hash,
 						}
 
