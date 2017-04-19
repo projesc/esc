@@ -49,13 +49,13 @@ func Off(listener *Listener) {
 
 func OnEvent(from string, name string, handler func(message *Message)) *Listener {
 	listener := Listener{From: from, Name: name, Handler: handler}
-	cmdListeners <- &listener
+	evtListeners <- &listener
 	return &listener
 }
 
 func OnCommand(from string, name string, handler func(message *Message)) *Listener {
 	listener := Listener{From: from, Name: name, Handler: handler}
-	evtListeners <- &listener
+	cmdListeners <- &listener
 	return &listener
 }
 
@@ -138,7 +138,7 @@ func should(recent *cache.Cache, msg *Message) (should bool) {
 
 func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
 	sendQueue = make(chan *Message, 4)
-	handleQueue = make(chan *Message, 44)
+	handleQueue = make(chan *Message, 4)
 
 	evtListeners = make(chan *Listener, 4)
 	cmdListeners = make(chan *Listener, 4)
@@ -159,30 +159,34 @@ func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
 	clients := make(map[string]*gorpc.Client)
 	recentSend := cache.New(2*time.Second, 2*time.Second)
 	recentHandle := cache.New(2*time.Second, 2*time.Second)
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 
 	go func() {
 		for {
 			select {
 			case listener := <-evtListeners:
-				commandListeners = append(commandListeners, listener)
-			case listener := <-cmdListeners:
+				log.Println("--->evtlist")
 				eventListeners = append(eventListeners, listener)
+			case listener := <-cmdListeners:
+				log.Println("--->cmdlist")
+				commandListeners = append(commandListeners, listener)
 			case service := <-nodeIn:
-				log.Println("New node", service.Name)
+				log.Println("--->New node", service.Name)
 				c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", service.AddrV4.String(), config.Port))
 				c.Start()
 				clients[service.Name] = c
 				SendCommandC(service.Name, "ping", []byte("ping"), false)
 				SendEvent("connected", []byte(service.Name))
 			case msg := <-handleQueue:
+				log.Println("-->handle")
 				if should(recentHandle, msg) {
 					log.Println("Handling", msg.Name, msg.From)
-					handle(msg)
+					go handle(msg)
 				} else {
 					log.Println("Not handling", msg.Name, msg.From)
 				}
 			case msg := <-sendQueue:
+				log.Println("--->send")
 				msg.From = Self()
 				if should(recentSend, msg) {
 					log.Println("Sending", msg.Name, msg.To)
@@ -206,6 +210,7 @@ func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
 					log.Println("Not sending", msg.Name, msg.To)
 				}
 			case <-ticker.C:
+				log.Println("---->tick")
 				for name, client := range clients {
 					snap := client.Stats.Snapshot()
 					if snap.ReadErrors > 10 || snap.WriteErrors > 10 || snap.AcceptErrors > 10 || snap.DialErrors > 10 {
