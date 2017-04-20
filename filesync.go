@@ -78,6 +78,56 @@ func onFileChanged(message *Message) {
 	fileIn <- &file
 }
 
+func ScanDir(registeredFiles map[string]*File, got map[string]bool, dirName string) {
+	dir, _ := os.Open(dirName)
+	files, _ := dir.Readdir(0)
+
+	for _, fileInfo := range files {
+		fileName := fmt.Sprintf("%s/%s", dirName, fileInfo.Name())
+
+		if fileInfo.IsDir() {
+			ScanDir(registeredFiles, got, fileName)
+		} else if !fileInfo.IsDir() && !strings.HasPrefix(fileName, fmt.Sprintf("%s/.", dirName)) && !strings.HasSuffix(fileName, "~") {
+			got[fileName] = true
+
+			content, err := ioutil.ReadFile(fileName)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+
+			hasher := sha256.New()
+			hasher.Write(content)
+			hash := hex.EncodeToString(hasher.Sum(nil))
+
+			file := File{
+				Name:    fileName,
+				Content: content,
+				Time:    fileInfo.ModTime(),
+				Hash:    hash,
+			}
+
+			if _, ok := registeredFiles[fileName]; !ok {
+				log.Println("Sending new file", fileName)
+				fileOut <- &file
+			} else if registeredFiles[fileName].Hash != hash {
+				log.Println("Sending changed file", fileName)
+				fileOut <- &file
+			}
+
+			registeredFiles[fileName] = &file
+		}
+	}
+
+	for name, _ := range registeredFiles {
+		if _, ok := got[name]; !ok {
+			log.Println("Removed file", name)
+			SendEvent("fileRemoved", []byte(name))
+			fileRm <- name
+		}
+	}
+}
+
 func DirSync(dirName string) {
 	registeredFiles := make(map[string]*File)
 
@@ -123,52 +173,8 @@ func DirSync(dirName string) {
 				time, _ := file.Time.MarshalText()
 				SendEventC("fileSync", []byte(fmt.Sprintf("%s,%s,%s", file.Name, time, base64.StdEncoding.EncodeToString(file.Content))), true)
 			case <-ticker.C:
-				dir, _ := os.Open(dirName)
-				files, _ := dir.Readdir(0)
 				got := make(map[string]bool)
-
-				for _, fileInfo := range files {
-					fileName := fmt.Sprintf("%s/%s", dirName, fileInfo.Name())
-
-					if !strings.HasPrefix(fileName, fmt.Sprintf("%s/.", dirName)) && !strings.HasSuffix(fileName, "~") {
-						got[fileName] = true
-
-						content, err := ioutil.ReadFile(fileName)
-						if err != nil {
-							log.Println(err)
-							continue
-						}
-
-						hasher := sha256.New()
-						hasher.Write(content)
-						hash := hex.EncodeToString(hasher.Sum(nil))
-
-						file := File{
-							Name:    fileName,
-							Content: content,
-							Time:    fileInfo.ModTime(),
-							Hash:    hash,
-						}
-
-						if _, ok := registeredFiles[fileName]; !ok {
-							log.Println("Sending new file", fileName)
-							fileOut <- &file
-						} else if registeredFiles[fileName].Hash != hash {
-							log.Println("Sending changed file", fileName)
-							fileOut <- &file
-						}
-
-						registeredFiles[fileName] = &file
-					}
-				}
-
-				for name, _ := range registeredFiles {
-					if _, ok := got[name]; !ok {
-						log.Println("Removed file", name)
-						SendEvent("fileRemoved", []byte(name))
-						fileRm <- name
-					}
-				}
+				ScanDir(registeredFiles, got, dirName)
 			}
 		}
 	}()
