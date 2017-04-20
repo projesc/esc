@@ -19,6 +19,7 @@ type Config struct {
 	Scripts   string `json:"scripts"`
 	Net       *net.Interface
 	IPs       []net.IP
+	Extras    map[string]string `json:"extras"`
 }
 
 func defaultConfig() Config {
@@ -34,6 +35,7 @@ func defaultConfig() Config {
 		Discovery: 8902,
 		IFace:     "eth0",
 		Scripts:   "scripts",
+		Extras:    make(map[string]string),
 	}
 
 	return config
@@ -44,41 +46,47 @@ func LoadConfig() *Config {
 
 	defaultConfig := defaultConfig()
 
+	configFile := "config.yml"
 	if len(os.Args) > 1 && len(os.Args)%2 == 0 {
-		configFile := os.Args[len(os.Args)-1]
+		configFile = os.Args[len(os.Args)-1]
+	}
 
-		_, err := os.Stat(configFile)
-		var fileConfig Config
-		if err == nil {
-			content, err0 := ioutil.ReadFile(configFile)
-			if err0 != nil {
-				panic(err0)
-			}
-
-			err1 := yaml.Unmarshal(content, &fileConfig)
-			if err1 != nil {
-				panic(err1)
-			}
-
-			if fileConfig.Node != "" {
-				defaultConfig.Node = fileConfig.Node
-			}
-			if fileConfig.Join != "" {
-				defaultConfig.Join = fileConfig.Join
-			}
-			if fileConfig.IFace != "" {
-				defaultConfig.IFace = fileConfig.IFace
-			}
-			if fileConfig.Discovery != 0 {
-				defaultConfig.Discovery = fileConfig.Discovery
-			}
-			if fileConfig.Port != 0 {
-				defaultConfig.Port = fileConfig.Port
-			}
-			if fileConfig.Scripts != "" {
-				defaultConfig.Scripts = fileConfig.Scripts
-			}
+	_, err := os.Stat(configFile)
+	var fileConfig Config
+	if err == nil {
+		content, err0 := ioutil.ReadFile(configFile)
+		if err0 != nil {
+			panic(err0)
 		}
+
+		err1 := yaml.Unmarshal(content, &fileConfig)
+		if err1 != nil {
+			panic(err1)
+		}
+
+		if fileConfig.Node != "" {
+			defaultConfig.Node = fileConfig.Node
+		}
+		if fileConfig.Join != "" {
+			defaultConfig.Join = fileConfig.Join
+		}
+		if fileConfig.IFace != "" {
+			defaultConfig.IFace = fileConfig.IFace
+		}
+		if fileConfig.Discovery != 0 {
+			defaultConfig.Discovery = fileConfig.Discovery
+		}
+		if fileConfig.Port != 0 {
+			defaultConfig.Port = fileConfig.Port
+		}
+		if fileConfig.Scripts != "" {
+			defaultConfig.Scripts = fileConfig.Scripts
+		}
+		if fileConfig.Extras != nil {
+			config.Extras = fileConfig.Extras
+		}
+	} else {
+		log.Println(err)
 	}
 
 	flag.StringVar(&config.Node, "node", defaultConfig.Node, "Name of this node")

@@ -3,3 +3,5 @@ port: 8901
 discovery: 8902
 scripts: "scripts"
 iface: "wlan0"
+extras:
+  foo: "bar"

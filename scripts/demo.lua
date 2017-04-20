@@ -5,6 +5,9 @@ foo = get("foo")
 
 log(foo)
 
+log("CFG "..config("foo"))
+log("CFG "..config("fuz"))
+
 onEvent("*","test",function(msg)
   log("Received "..msg.name)
 

@@ -51,6 +51,8 @@ discovery: 8902
 port: 8901
 scripts: "script_dir"
 iface: "wlan0"
+extras:
+  foo: "bar"
 ```
 
 You can view the command options:
@@ -95,6 +97,7 @@ And example of a script exploring the available functions:
 
 ```lua
 log("I am "..self()) -- this node name, in case you need
+log("Foo is "..config("foo")) -- access config extras
 
 -- listen on events from any node (the first "*") that are named hello
 onEvent("*","hello",function(msg)
@@ -103,7 +106,7 @@ onEvent("*","hello",function(msg)
 end)
 
 -- listen on to the command clear from nodeb
-onCommand("nodeb","clear",function(msg)
+onCommand(nameOf("nodeb"),"clear",function(msg)
   -- Key value store is shared
   Set("foo","")
 end)

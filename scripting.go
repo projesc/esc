@@ -128,6 +128,11 @@ func luaNameOf(vm *lua.LState) int {
 	return 1
 }
 
+func luaConfig(vm *lua.LState) int {
+	vm.Push(lua.LString(config.Extras[vm.ToString(1)]))
+	return 1
+}
+
 func luaTick(script *Script, vm *lua.LState) int {
 	sec := vm.ToInt(1)
 	fun := vm.ToFunction(2)
@@ -159,6 +164,7 @@ func startScript(file string) *Script {
 	}
 
 	vm.SetGlobal("nameOf", vm.NewFunction(luaNameOf))
+	vm.SetGlobal("config", vm.NewFunction(luaConfig))
 	vm.SetGlobal("self", vm.NewFunction(luaSelf))
 	vm.SetGlobal("log", vm.NewFunction(luaLog))
 	vm.SetGlobal("set", vm.NewFunction(luaSet))
