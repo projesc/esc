@@ -1,8 +1,11 @@
 package main
 
 import (
+	"github.com/cjoudrey/gluahttp"
 	"github.com/yuin/gopher-lua"
+	"layeh.com/gopher-json"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -181,6 +184,9 @@ func startScript(file string) *Script {
 	vm.SetGlobal("sendEvent", vm.NewFunction(luaSendEvt))
 	vm.SetGlobal("sendCommand", vm.NewFunction(luaSendCmd))
 	vm.SetGlobal("sendCommandC", vm.NewFunction(luaSendCmdC))
+
+	vm.PreloadModule("http", gluahttp.NewHttpModule(&http.Client{}).Loader)
+	vm.PreloadModule("json", json.Loader)
 
 	err := vm.DoFile(file)
 	if err != nil {

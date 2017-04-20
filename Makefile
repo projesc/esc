@@ -24,6 +24,9 @@ deps:
 	go get github.com/diogok/gorpc
 	go get github.com/patrickmn/go-cache
 	go get github.com/yuin/gopher-lua
+	#go get github.com/layeh/gopher-json
+	go get layeh.com/gopher-json
+	go get github.com/cjoudrey/gluahttp
 
 push:
 	docker push diogok/esc
