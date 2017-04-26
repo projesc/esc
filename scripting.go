@@ -14,13 +14,15 @@ var calls chan *Call
 var callbacks chan *Callback
 
 type Script struct {
+	Id string
+
 	Lua       *lua.LState
 	Listeners []*Listener
 
-	Active bool
-
 	File string
 	Hash string
+
+	Done []chan bool
 }
 
 type Call struct {
@@ -30,13 +32,16 @@ type Call struct {
 }
 
 type Callback struct {
-	Back   chan bool
-	Script *Script
-	Fun    *lua.LFunction
+	Message *Message
+	Script  *Script
+	Fun     *lua.LFunction
+	Done    chan bool
 }
 
 func stopScript(script *Script) {
-	script.Active = false
+	for _, done := range script.Done {
+		done <- true
+	}
 	for _, listener := range script.Listeners {
 		Off(listener)
 	}
@@ -140,20 +145,25 @@ func luaTick(script *Script, vm *lua.LState) int {
 	sec := vm.ToInt(1)
 	fun := vm.ToFunction(2)
 
+	done := make(chan bool, 1)
 	ticker := time.NewTicker(time.Duration(sec) * time.Second)
 	go func() {
 		for {
-			back := make(chan bool, 1)
-			callback := Callback{Script: script, Fun: fun, Back: back}
-			callbacks <- &callback
-			ok := <-back
-			if ok && script.Active {
-				<-ticker.C
-			} else {
+			select {
+			case <-ticker.C:
+				callbacks <- &Callback{Script: script, Fun: fun, Done: done}
+			case <-done:
+				for i, d := range script.Done {
+					if d == done {
+						script.Done = append(script.Done[:i], script.Done[i+1:]...)
+					}
+				}
 				return
 			}
 		}
 	}()
+
+	script.Done = append(script.Done, done)
 	return 0
 }
 
@@ -161,9 +171,9 @@ func startScript(file string) *Script {
 	vm := lua.NewState()
 
 	script := Script{
-		Lua:    vm,
-		File:   file,
-		Active: true,
+		Lua:  vm,
+		File: file,
+		Id:   RandId(),
 	}
 
 	vm.SetGlobal("nameOf", vm.NewFunction(luaNameOf))
@@ -224,18 +234,22 @@ func startScripting() {
 			select {
 			case name := <-detected:
 				if strings.HasSuffix(name, ".lua") {
-					if _, ok := scripts[name]; ok {
-						stop <- name
+					for _, script := range scripts {
+						if script.File == name {
+							stop <- script.Id
+						}
 					}
 					start <- name
 				}
-			case name := <-stop:
-				log.Println("Stoping script", name)
-				stopScript(scripts[name])
-				delete(scripts, name)
+			case id := <-stop:
+				script := scripts[id]
+				log.Println("Stoping script", script.File, id)
+				stopScript(scripts[id])
+				delete(scripts, id)
 			case name := <-start:
 				log.Println("Starting script", name)
-				scripts[name] = startScript(name)
+				script := startScript(name)
+				scripts[script.Id] = script
 			case call := <-calls:
 				err := call.Script.Lua.CallByParam(lua.P{
 					Fn:      call.Handler,
@@ -251,11 +265,14 @@ func startScripting() {
 					NRet:    1,
 					Protect: true,
 				})
+				keepOn := true
 				if err != nil {
-					log.Println(err)
-					call.Back <- false
+					keepOn = false
 				} else {
-					call.Back <- call.Script.Lua.Get(-1) == lua.LTrue
+					keepOn = call.Script.Lua.Get(-1) == lua.LTrue
+				}
+				if !keepOn {
+					call.Done <- true
 				}
 			}
 		}
