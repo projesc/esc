@@ -1,4 +1,4 @@
-package main
+package esc
 
 import (
 	"crypto/sha256"
@@ -17,13 +17,6 @@ var fileOut chan *File
 var fileRm chan string
 var newNode chan string
 
-type File struct {
-	Name    string
-	Hash    string
-	Time    time.Time
-	Content []byte
-}
-
 func startDirSync() {
 	newNode = make(chan string, 4)
 	fileIn = make(chan *File, 4)
@@ -34,28 +27,28 @@ func startDirSync() {
 	OnEvent("*", "fileRemoved", onFileRemoved)
 	OnEvent("*", "connected", onNewNode)
 
-	if config.Scripts != "" {
-		DirSync(config.Scripts)
+	if config.Directory != "" {
+		DirSync(config.Directory)
 	}
 }
 
 func onNewNode(message *Message) {
-	if string(message.Payload) == Self() {
+	if message.Payload == Self() {
 		return
 	}
-	log.Println("Sending files cause of new node", string(message.Payload))
-	newNode <- string(message.Payload)
+	log.Println("Sending files cause of new node", message.Payload)
+	newNode <- message.Payload
 }
 
 func onFileRemoved(message *Message) {
 	if message.From == Self() {
 		return
 	}
-	fileRm <- string(message.Payload)
+	fileRm <- message.Payload
 }
 
 func onFileChanged(message *Message) {
-	parts := strings.SplitN(string(message.Payload), ",", 3)
+	parts := strings.SplitN(message.Payload, ",", 3)
 
 	fileName := parts[0]
 
@@ -109,10 +102,14 @@ func ScanDir(registeredFiles map[string]*File, got map[string]bool, dirName stri
 
 			if _, ok := registeredFiles[fileName]; !ok {
 				log.Println("Sending new file", fileName)
-				fileOut <- &file
+				go func() {
+					fileOut <- &file
+				}()
 			} else if registeredFiles[fileName].Hash != hash {
 				log.Println("Sending changed file", fileName)
-				fileOut <- &file
+				go func() {
+					fileOut <- &file
+				}()
 			}
 
 			registeredFiles[fileName] = &file
@@ -122,7 +119,7 @@ func ScanDir(registeredFiles map[string]*File, got map[string]bool, dirName stri
 	for name, _ := range registeredFiles {
 		if _, ok := got[name]; !ok {
 			log.Println("Removed file", name)
-			SendEvent("fileRemoved", []byte(name))
+			SendEvent("fileRemoved", name)
 			fileRm <- name
 		}
 	}
@@ -145,19 +142,21 @@ func DirSync(dirName string) {
 			case <-newNode:
 				log.Println("new node, sending files")
 				for _, file := range registeredFiles {
-					fileOut <- file
+					go func() {
+						fileOut <- file
+					}()
 				}
 			case file := <-fileIn:
 				log.Println("Got file", file.Name)
 				if _, ok := registeredFiles[file.Name]; !ok {
 					log.Println("New file", file.Name)
-					ioutil.WriteFile(file.Name, []byte(file.Content), 0755)
+					ioutil.WriteFile(file.Name, file.Content, 0755)
 					registeredFiles[file.Name] = file
 				} else if registeredFiles[file.Name].Hash != file.Hash {
 					log.Println("Changed file", file.Name)
 					if registeredFiles[file.Name].Time.Before(file.Time) {
 						log.Println("Their file is newer", file.Name)
-						ioutil.WriteFile(file.Name, []byte(file.Content), 0755)
+						ioutil.WriteFile(file.Name, file.Content, 0755)
 						registeredFiles[file.Name] = file
 					} else {
 						log.Println("Our", file.Name, "is older")
@@ -171,7 +170,7 @@ func DirSync(dirName string) {
 			case file := <-fileOut:
 				log.Println("Sending out file", file.Name)
 				time, _ := file.Time.MarshalText()
-				SendEventC("fileSync", []byte(fmt.Sprintf("%s,%s,%s", file.Name, time, base64.StdEncoding.EncodeToString(file.Content))), true)
+				SendEventC("fileSync", fmt.Sprintf("%s,%s,%s", file.Name, time, base64.StdEncoding.EncodeToString(file.Content)), true)
 			case <-ticker.C:
 				got := make(map[string]bool)
 				ScanDir(registeredFiles, got, dirName)

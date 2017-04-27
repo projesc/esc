@@ -1,4 +1,4 @@
-package main
+package esc
 
 import (
 	"fmt"
@@ -9,21 +9,9 @@ import (
 	"time"
 )
 
-var serviceName string
-
-func Self() string {
-	return fmt.Sprintf("%s.%s.local.", config.Node, serviceName)
-}
-
-func NameOf(node string) string {
-	return fmt.Sprintf("%s.%s.local.", node, serviceName)
-}
-
-func startDiscovery() chan *mdns.ServiceEntry {
-	nodeIn := make(chan *mdns.ServiceEntry)
-
-	serviceName = "_esc._tcp"
-	service, err0 := mdns.NewMDNSService(config.Node, serviceName, "", config.Host, config.Discovery, config.IPs, []string{"esc"})
+func startDiscovery() chan *Service {
+	nodeIn := make(chan *Service)
+	service, err0 := mdns.NewMDNSService(Config().Node, ServiceName(), "", Config().Host, config.Discovery, config.IPs, []string{"esc"})
 	if err0 != nil {
 		panic(err0)
 	}
@@ -37,10 +25,14 @@ func startDiscovery() chan *mdns.ServiceEntry {
 	entries := make(chan *mdns.ServiceEntry, 4)
 	go func() {
 		for entry := range entries {
-			if strings.HasSuffix(entry.Name, fmt.Sprintf("%s.local.", serviceName)) {
+			if strings.HasSuffix(entry.Name, fmt.Sprintf("%s.local.", ServiceName())) {
 				if _, ok := found.Get(entry.Name); !ok {
 					log.Printf("Found node %s\n", entry.Name)
-					nodeIn <- entry
+					nodeIn <- &Service{
+						Name:   entry.Name,
+						Port:   Config().Port,
+						AddrV4: &entry.AddrV4,
+					}
 				}
 				found.Set(entry.Name, entry.Name, cache.DefaultExpiration)
 			}
@@ -50,11 +42,9 @@ func startDiscovery() chan *mdns.ServiceEntry {
 	ticker := time.NewTicker(8 * time.Second)
 	go func() {
 		for {
-			mdns.Lookup(serviceName, entries)
+			mdns.Lookup(ServiceName(), entries)
 			<-ticker.C
 		}
 	}()
-
 	return nodeIn
-
 }

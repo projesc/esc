@@ -1,4 +1,4 @@
-FROM scratch
+FROM resin/rpi-raspbian
 
 ADD esc-arm /esc
 

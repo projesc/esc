@@ -1,4 +1,4 @@
-package main
+package esc
 
 import (
 	"github.com/cjoudrey/gluahttp"
@@ -10,33 +10,7 @@ import (
 	"time"
 )
 
-var calls chan *Call
-var callbacks chan *Callback
-
-type Script struct {
-	Id string
-
-	Lua       *lua.LState
-	Listeners []*Listener
-
-	File string
-	Hash string
-
-	Done []chan bool
-}
-
-type Call struct {
-	Message *Message
-	Handler *lua.LFunction
-	Script  *Script
-}
-
-type Callback struct {
-	Message *Message
-	Script  *Script
-	Fun     *lua.LFunction
-	Done    chan bool
-}
+var ScriptCalls chan *ScriptCall
 
 func stopScript(script *Script) {
 	for _, done := range script.Done {
@@ -52,7 +26,7 @@ func luaMessage(vm *lua.LState, message *Message) *lua.LTable {
 	table := vm.NewTable()
 	vm.SetField(table, "from", lua.LString(message.From))
 	vm.SetField(table, "name", lua.LString(message.Name))
-	vm.SetField(table, "payload", lua.LString(string(message.Payload)))
+	vm.SetField(table, "payload", lua.LString(message.Payload))
 	return table
 }
 
@@ -60,7 +34,7 @@ func luaSendCmd(vm *lua.LState) int {
 	to := vm.ToString(1)
 	name := vm.ToString(2)
 	payload := vm.ToString(3)
-	SendCommand(to, name, []byte(payload))
+	SendCommand(to, name, payload)
 	return 0
 }
 
@@ -69,14 +43,14 @@ func luaSendCmdC(vm *lua.LState) int {
 	name := vm.ToString(2)
 	payload := vm.ToString(3)
 	coalesce := vm.ToBool(4)
-	SendCommandC(to, name, []byte(payload), coalesce)
+	SendCommandC(to, name, payload, coalesce)
 	return 0
 }
 
 func luaSendEvt(vm *lua.LState) int {
 	name := vm.ToString(1)
 	payload := vm.ToString(2)
-	SendEvent(name, []byte(payload))
+	SendEvent(name, payload)
 	return 0
 }
 
@@ -86,7 +60,7 @@ func luaOnCmd(script *Script, vm *lua.LState) int {
 	handler := vm.ToFunction(3)
 
 	listener := OnCommand(from, name, func(message *Message) {
-		calls <- &Call{message, handler, script}
+		ScriptCalls <- &ScriptCall{Message: message, Fun: handler, Script: script}
 	})
 
 	script.Listeners = append(script.Listeners, listener)
@@ -99,7 +73,7 @@ func luaOnEvt(script *Script, vm *lua.LState) int {
 	handler := vm.ToFunction(3)
 
 	listener := OnEvent(from, name, func(message *Message) {
-		calls <- &Call{message, handler, script}
+		ScriptCalls <- &ScriptCall{Message: message, Fun: handler, Script: script}
 	})
 
 	script.Listeners = append(script.Listeners, listener)
@@ -112,27 +86,18 @@ func luaLog(vm *lua.LState) int {
 	return 0
 }
 
-func luaGet(vm *lua.LState) int {
-	key := vm.ToString(1)
-	value := Get(key)
-	vm.Push(lua.LString(value))
-	return 1
-}
-
-func luaSet(vm *lua.LState) int {
-	key := vm.ToString(1)
-	value := vm.ToString(2)
-	Set(key, value)
-	return 0
-}
-
 func luaSelf(vm *lua.LState) int {
 	vm.Push(lua.LString(Self()))
 	return 1
 }
 
-func luaNameOf(vm *lua.LState) int {
-	vm.Push(lua.LString(NameOf(vm.ToString(1))))
+func luaFullName(vm *lua.LState) int {
+	vm.Push(lua.LString(FullName(vm.ToString(1))))
+	return 1
+}
+
+func luaShortName(vm *lua.LState) int {
+	vm.Push(lua.LString(ShortName(vm.ToString(1))))
 	return 1
 }
 
@@ -151,7 +116,7 @@ func luaTick(script *Script, vm *lua.LState) int {
 		for {
 			select {
 			case <-ticker.C:
-				callbacks <- &Callback{Script: script, Fun: fun, Done: done}
+				ScriptCalls <- &ScriptCall{Script: script, Fun: fun, Done: done, Back: true}
 			case <-done:
 				for i, d := range script.Done {
 					if d == done {
@@ -176,12 +141,11 @@ func startScript(file string) *Script {
 		Id:   RandId(),
 	}
 
-	vm.SetGlobal("nameOf", vm.NewFunction(luaNameOf))
+	vm.SetGlobal("fullName", vm.NewFunction(luaFullName))
+	vm.SetGlobal("shortName", vm.NewFunction(luaShortName))
 	vm.SetGlobal("config", vm.NewFunction(luaConfig))
 	vm.SetGlobal("self", vm.NewFunction(luaSelf))
 	vm.SetGlobal("log", vm.NewFunction(luaLog))
-	vm.SetGlobal("set", vm.NewFunction(luaSet))
-	vm.SetGlobal("get", vm.NewFunction(luaGet))
 	vm.SetGlobal("onEvent", vm.NewFunction(func(vm *lua.LState) int {
 		return luaOnEvt(&script, vm)
 	}))
@@ -197,6 +161,10 @@ func startScript(file string) *Script {
 
 	vm.PreloadModule("http", gluahttp.NewHttpModule(&http.Client{}).Loader)
 	vm.PreloadModule("json", json.Loader)
+
+	for _, p := range plugins {
+		p.Script(&script)
+	}
 
 	err := vm.DoFile(file)
 	if err != nil {
@@ -214,18 +182,27 @@ func startScripting() {
 	start := make(chan string, 4)
 	stop := make(chan string, 4)
 
-	calls = make(chan *Call, 4)
-	callbacks = make(chan *Callback, 4)
+	ScriptCalls = make(chan *ScriptCall, 4)
 
 	OnEvent(Self(), "fileSync", func(msg *Message) {
-		parts := strings.SplitN(string(msg.Payload), ",", 2)
-		detected <- parts[0]
+		parts := strings.SplitN(msg.Payload, ",", 2)
+		file := parts[0]
+		if strings.HasSuffix(file, ".lua") {
+			detected <- file
+		}
 	})
 
 	OnEvent(Self(), "fileRemoved", func(msg *Message) {
-		name := string(msg.Payload)
+		name := msg.Payload
 		if _, ok := scripts[name]; ok {
 			stop <- name
+		}
+	})
+
+	OnEvent(Self(), "pluginStarted", func(msg *Message) {
+		for _, script := range scripts {
+			stop <- script.Id
+			start <- script.File
 		}
 	})
 
@@ -233,46 +210,49 @@ func startScripting() {
 		for {
 			select {
 			case name := <-detected:
-				if strings.HasSuffix(name, ".lua") {
-					for _, script := range scripts {
-						if script.File == name {
-							stop <- script.Id
-						}
+				for _, script := range scripts {
+					if script.File == name {
+						stop <- script.Id
 					}
-					start <- name
 				}
+				start <- name
 			case id := <-stop:
 				script := scripts[id]
-				log.Println("Stoping script", script.File, id)
+				log.Println("Stoping script", script.File)
 				stopScript(scripts[id])
 				delete(scripts, id)
+				SendEvent("scriptStopped", script.File)
 			case name := <-start:
 				log.Println("Starting script", name)
 				script := startScript(name)
 				scripts[script.Id] = script
-			case call := <-calls:
+				SendEvent("scriptStarted", script.File)
+			case call := <-ScriptCalls:
+				var arg *lua.LTable
+				n := 0
+				if call.Message != nil {
+					arg = luaMessage(call.Script.Lua, call.Message)
+				} else {
+					n = 1
+				}
 				err := call.Script.Lua.CallByParam(lua.P{
-					Fn:      call.Handler,
-					NRet:    0,
+					Fn:      call.Fun,
+					NRet:    n,
 					Protect: true,
-				}, luaMessage(call.Script.Lua, call.Message))
+				}, arg)
 				if err != nil {
 					log.Println(err)
 				}
-			case call := <-callbacks:
-				err := call.Script.Lua.CallByParam(lua.P{
-					Fn:      call.Fun,
-					NRet:    1,
-					Protect: true,
-				})
-				keepOn := true
-				if err != nil {
-					keepOn = false
-				} else {
-					keepOn = call.Script.Lua.Get(-1) == lua.LTrue
-				}
-				if !keepOn {
-					call.Done <- true
+				if call.Back {
+					keepOn := true
+					if err != nil {
+						keepOn = false
+					} else {
+						keepOn = call.Script.Lua.Get(-1) == lua.LTrue
+					}
+					if !keepOn {
+						call.Done <- true
+					}
 				}
 			}
 		}

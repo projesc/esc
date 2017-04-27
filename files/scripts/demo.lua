@@ -1,8 +1,4 @@
 
-set("foo","bar")
-
-foo = get("foo")
-
 log(foo)
 
 log("CFG "..config("foo"))

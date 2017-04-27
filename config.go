@@ -1,4 +1,4 @@
-package main
+package esc
 
 import (
 	"flag"
@@ -9,40 +9,32 @@ import (
 	"os"
 )
 
-type Config struct {
-	Host      string
-	Node      string `json:"node"`
-	Join      string `json:"join"`
-	IFace     string `json:"iface"`
-	Discovery int    `json:"discovery"`
-	Port      int    `json:"port"`
-	Scripts   string `json:"scripts"`
-	Net       *net.Interface
-	IPs       []net.IP
-	Extras    map[string]string `json:"extras"`
-}
+var config *EscConfig
 
-func defaultConfig() Config {
+func defaultConfig() EscConfig {
 	host, err := os.Hostname()
 	if err != nil {
 		panic(err)
 	}
 
-	config := Config{
+	config := EscConfig{
 		Node:      host,
 		Host:      host,
 		Port:      8901,
 		Discovery: 8902,
 		IFace:     "eth0",
-		Scripts:   "scripts",
+		Directory: "files",
 		Extras:    make(map[string]string),
 	}
 
 	return config
 }
 
-func LoadConfig() *Config {
-	config := Config{}
+func Config() *EscConfig {
+	if config != nil {
+		return config
+	}
+	config = &EscConfig{}
 
 	defaultConfig := defaultConfig()
 
@@ -52,7 +44,7 @@ func LoadConfig() *Config {
 	}
 
 	_, err := os.Stat(configFile)
-	var fileConfig Config
+	var fileConfig EscConfig
 	if err == nil {
 		content, err0 := ioutil.ReadFile(configFile)
 		if err0 != nil {
@@ -79,8 +71,8 @@ func LoadConfig() *Config {
 		if fileConfig.Port != 0 {
 			defaultConfig.Port = fileConfig.Port
 		}
-		if fileConfig.Scripts != "" {
-			defaultConfig.Scripts = fileConfig.Scripts
+		if fileConfig.Directory != "" {
+			defaultConfig.Directory = fileConfig.Directory
 		}
 		if fileConfig.Extras != nil {
 			config.Extras = fileConfig.Extras
@@ -92,7 +84,7 @@ func LoadConfig() *Config {
 	flag.StringVar(&config.Node, "node", defaultConfig.Node, "Name of this node")
 	flag.StringVar(&config.Join, "join", defaultConfig.Join, "Address of node to join")
 	flag.StringVar(&config.IFace, "iface", defaultConfig.IFace, "Network Interface to bind to")
-	flag.StringVar(&config.Scripts, "scripts", defaultConfig.Scripts, "Scripts directory")
+	flag.StringVar(&config.Directory, "dir", defaultConfig.Directory, "Plugin/Directory directory")
 	flag.IntVar(&config.Discovery, "discovery", defaultConfig.Discovery, "Port for network discovery")
 	flag.IntVar(&config.Port, "port", defaultConfig.Port, "Port for cluster conns")
 	flag.Parse()
@@ -119,5 +111,5 @@ func LoadConfig() *Config {
 	}
 
 	log.Printf("%v\n", config)
-	return &config
+	return config
 }

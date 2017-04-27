@@ -1,29 +1,12 @@
-package main
+package esc
 
 import (
 	"fmt"
 	"github.com/diogok/gorpc"
-	"github.com/micro/mdns"
 	"github.com/patrickmn/go-cache"
 	"log"
 	"time"
 )
-
-type Message struct {
-	Command  bool
-	Event    bool
-	From     string
-	Name     string
-	To       string
-	Payload  []byte
-	Coalesce bool
-}
-
-type Listener struct {
-	From    string
-	Name    string
-	Handler func(message *Message)
-}
 
 var sendQueue chan *Message
 var handleQueue chan *Message
@@ -85,11 +68,11 @@ func handle(message *Message) {
 	}
 }
 
-func SendCommand(to string, name string, payload []byte) {
+func SendCommand(to string, name string, payload string) {
 	SendCommandC(to, name, payload, true)
 }
 
-func SendCommandC(to string, name string, payload []byte, coalesce bool) {
+func SendCommandC(to string, name string, payload string, coalesce bool) {
 	log.Printf("Queue command %s to %s\n", name, to)
 
 	msg := Message{
@@ -104,11 +87,11 @@ func SendCommandC(to string, name string, payload []byte, coalesce bool) {
 	sendQueue <- &msg
 }
 
-func SendEvent(name string, payload []byte) {
+func SendEvent(name string, payload string) {
 	SendEventC(name, payload, false)
 }
 
-func SendEventC(name string, payload []byte, coalesce bool) {
+func SendEventC(name string, payload string, coalesce bool) {
 	log.Printf("Queue event %s\n", name)
 
 	msg := Message{
@@ -136,7 +119,7 @@ func should(recent *cache.Cache, msg *Message) (should bool) {
 	return should
 }
 
-func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
+func startMessaging(nodeIn <-chan *Service) {
 	sendQueue = make(chan *Message, 4)
 	handleQueue = make(chan *Message, 4)
 
@@ -145,7 +128,7 @@ func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
 
 	gorpc.RegisterType(&Message{})
 
-	s := gorpc.NewTCPServer(fmt.Sprintf("0.0.0.0:%d", config.Port), func(_ string, req interface{}) interface{} {
+	s := gorpc.NewTCPServer(fmt.Sprintf("0.0.0.0:%d", Config().Port), func(_ string, req interface{}) interface{} {
 		message := req.(*Message)
 		handleQueue <- message
 		return nil
@@ -165,20 +148,16 @@ func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
 		for {
 			select {
 			case listener := <-evtListeners:
-				log.Println("-->evtlist")
 				eventListeners = append(eventListeners, listener)
 			case listener := <-cmdListeners:
-				log.Println("-->cmdlist")
 				commandListeners = append(commandListeners, listener)
 			case service := <-nodeIn:
-				log.Println("-->New node", service.Name)
-				c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", service.AddrV4.String(), config.Port))
+				log.Printf("Node in %s\n", service.Name)
+				c := gorpc.NewTCPClient(fmt.Sprintf("%s:%d", service.AddrV4.String(), service.Port))
 				c.Start()
 				clients[service.Name] = c
-				SendCommandC(service.Name, "ping", []byte("ping"), false)
-				SendEvent("connected", []byte(service.Name))
+				SendEvent("connected", service.Name)
 			case msg := <-handleQueue:
-				log.Println("-->handle")
 				if should(recentHandle, msg) {
 					log.Println("Handling", msg.Name, msg.From)
 					go handle(msg)
@@ -186,31 +165,22 @@ func startMessaging(nodeIn <-chan *mdns.ServiceEntry) {
 					log.Println("Not handling", msg.Name, msg.From)
 				}
 			case msg := <-sendQueue:
-				log.Println("-->send")
 				msg.From = Self()
 				if should(recentSend, msg) {
 					log.Println("Sending", msg.Name, msg.To)
-					var toSend []*gorpc.Client
 					if msg.To == "*" {
 						for _, c := range clients {
-							toSend = append(toSend, c)
+							go c.Call(msg)
 						}
 					} else {
 						if c, ok := clients[msg.To]; ok {
-							toSend = append(toSend, c)
+							go c.Call(msg)
 						}
 					}
-
-					go func() {
-						for _, c := range toSend {
-							c.Call(msg)
-						}
-					}()
 				} else {
 					log.Println("Not sending", msg.Name, msg.To)
 				}
 			case <-ticker.C:
-				log.Println("-->tick")
 				for name, client := range clients {
 					snap := client.Stats.Snapshot()
 					if snap.ReadErrors > 10 || snap.WriteErrors > 10 || snap.AcceptErrors > 10 || snap.DialErrors > 10 {
