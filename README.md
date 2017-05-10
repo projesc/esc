@@ -13,23 +13,23 @@ This project is an study and attempt to create a replicated cluster of scripts t
 - Auto discovery of nodes 
 - Auto (re)load scripts
 - Works on raspberry pi (including zero)
+- Plugin system
 
 Soon:
 
-- Plugin system
 - IPV6 support
 - Docker swarm compatible 
 - Join mode / non-discovery mode
 
 ## Quick start
 
-Download the proper binary from the [releases page](https://github.com/diogok/esc/releases):
+Download the proper binary from the [releases page](https://github.com/projesc/esc/releases):
 
-    $ wget https://github.com/diogok/esc/releases/download/0.0.1/esc-amd64 -O esc
+    $ wget https://github.com/diogok/esc/projesc/download/0.0.1/esc-amd64 -O esc
 
-Create scripts directory:
+Create a directory for scripts and plugins: 
 
-    $ mkdir scripts
+    $ mkdir files
 
 Start the program on proper network interface:
 
@@ -39,7 +39,7 @@ Repeat on all nodes, edit the scripts on any one of them.
 
 ## Complete usage
 
-Download the binary from the [releases page](https://github.com/diogok/esc/releases).
+Download the binary from the [releases page](https://github.com/projesc/esc/releases).
 
 It accepts a configuration file or comand line argumetns (or both with the cli override the file), and comes with sane defaults.
 
@@ -49,8 +49,8 @@ To use the config file pass it as last argument of the command.
 node: "mynode"
 discovery: 8902
 port: 8901
-scripts: "script_dir"
-iface: "wlan0"
+directory: "files"
+iface: "eth0"
 extras:
   foo: "bar"
 ```
@@ -61,14 +61,14 @@ You can view the command options:
 
 They are all optional:
 
-    $ ./esc --node mynode --port 8901 --discovery 8902 --iface wlan0 --scripts scripts_dir config.yml
+    $ ./esc --node mynode --port 8901 --discovery 8902 --iface wlan0 --directory myfiles config.yml
 
 Arguments and config are:
 
 - node: Name of this node, defaults to hostname
 - discovery: port for auto-discovery of nodes
 - port: port for inter node communication
-- scripts: script directory
+- director: script and plugins directory
 - iface: interface to bind to (eth0, wlan0...)
 
 ## Docker
@@ -83,15 +83,23 @@ Or with arguments:
 
 Docker swarm compatibility is planned but not supported right now.
 
-## Discovery, Messaging and Scripting
+## Discovery
 
 The project will use mDNS on discovery port to find other nodes, it will connect and disconnect automatically to them.
 
-Any script at the "scripts" directory will be executed and reloaded on changes, it will also be kept in sync between nodes.
+It will find connect to every esc on the same network.
+
+## Messaging 
 
 An _event_ is a message with a _name_ and a _payload_ sent to all servers, and a _command_ is a message with a _target_, a _name_ and a _payload_.
 
-Right now it handles only strings.
+Right now it handles only strings as the payload.
+
+## Scripting
+
+ESC support running Lua scripts in it's managed environment.
+
+Any script at the configured directory will be executed and reloaded on changes, it will also be kept in sync between nodes.
 
 And example of a script exploring the available functions:
 
@@ -107,8 +115,6 @@ end)
 
 -- listen on to the command clear from nodeb
 onCommand(nameOf("nodeb"),"clear",function(msg)
-  -- Key value store is shared
-  Set("foo","")
 end)
 
 onCommand("*","shutdown",function(msg) 
@@ -132,6 +138,14 @@ end)
 Each lua script is an instance on it's own, and can only communicate using messages.
 
 A nice lua guide is at [learn X in Y minutes](https://learnxinyminutes.com/docs/lua).
+
+## Plugin
+
+Plugins are golang programs that extend ESC functions and capabilities.
+
+Every ".so" file found at the configured directory will be loaded as a plugin.
+
+An example plugin is the [synced key value store](https://github.com/projesc/esc-kv).
 
 ## License
 
