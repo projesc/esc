@@ -1,6 +1,6 @@
 package main
 
-import "esc"
+import "github.com/projesc/esc"
 
 func main() {
 	esc.Start()

@@ -82,7 +82,7 @@ func startPlugins() {
 				}
 
 				plugins[p.Id] = &p
-				start.(func())()
+				start.(func(*EscConfig))(config)
 				SendEvent("pluginStarted", p.File)
 			}
 		}

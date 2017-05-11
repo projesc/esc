@@ -115,14 +115,6 @@ func ScanDir(registeredFiles map[string]*File, got map[string]bool, dirName stri
 			registeredFiles[fileName] = &file
 		}
 	}
-
-	for name, _ := range registeredFiles {
-		if _, ok := got[name]; !ok {
-			log.Println("Removed file", name)
-			SendEvent("fileRemoved", name)
-			fileRm <- name
-		}
-	}
 }
 
 func DirSync(dirName string) {
@@ -174,6 +166,13 @@ func DirSync(dirName string) {
 			case <-ticker.C:
 				got := make(map[string]bool)
 				ScanDir(registeredFiles, got, dirName)
+				for name, _ := range registeredFiles {
+					if _, ok := got[name]; !ok {
+						log.Println("Removed file", name)
+						SendEvent("fileRemoved", name)
+						fileRm <- name
+					}
+				}
 			}
 		}
 	}()
