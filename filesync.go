@@ -76,11 +76,14 @@ func ScanDir(registeredFiles map[string]*File, got map[string]bool, dirName stri
 	files, _ := dir.Readdir(0)
 
 	for _, fileInfo := range files {
-		fileName := fmt.Sprintf("%s/%s", dirName, fileInfo.Name())
+		singleName := fileInfo.Name()
+		fileName := fmt.Sprintf("%s/%s", dirName, singleName)
 
-		if fileInfo.IsDir() {
+		if strings.HasPrefix(singleName, ".") || strings.HasSuffix(singleName, "~") {
+			// skip
+		} else if fileInfo.IsDir() {
 			ScanDir(registeredFiles, got, fileName)
-		} else if !fileInfo.IsDir() && !strings.HasPrefix(fileName, fmt.Sprintf("%s/.", dirName)) && !strings.HasSuffix(fileName, "~") {
+		} else {
 			got[fileName] = true
 
 			content, err := ioutil.ReadFile(fileName)
@@ -142,6 +145,8 @@ func DirSync(dirName string) {
 				log.Println("Got file", file.Name)
 				if _, ok := registeredFiles[file.Name]; !ok {
 					log.Println("New file", file.Name)
+					folder := file.Name[0:strings.LastIndex(file.Name, "/")]
+					os.MkdirAll(folder, 0755)
 					ioutil.WriteFile(file.Name, file.Content, 0755)
 					registeredFiles[file.Name] = file
 				} else if registeredFiles[file.Name].Hash != file.Hash {
