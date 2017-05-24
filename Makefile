@@ -4,10 +4,10 @@ all: clean build
 build: esc-amd64 esc-arm
 
 esc-amd64: 
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -tags netgo -ldflags '-w -s' -o esc-amd64 cmd/esc/main.go
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -tags netgo -o esc-amd64 cmd/esc/main.go
 
 esc-arm: 
-	CC=arm-linux-gnueabi-cc CGO_ENABLED=1 GOOS=linux GOARCH=arm GOARM=6 go build -a -tags netgo -ldflags '-w -s' -o esc-arm cmd/esc/main.go
+	CC=arm-linux-gnueabi-cc CGO_ENABLED=1 GOOS=linux GOARCH=arm GOARM=6 go build -a -tags netgo -o esc-arm cmd/esc/main.go
 
 docker: docker-amd64 docker-arm
 

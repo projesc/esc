@@ -7,9 +7,11 @@ import (
 )
 
 var plugins map[string]*Plugin
+var inPlugins chan *Plugin
 
 func startPlugins() {
 	plugins = make(map[string]*Plugin)
+	inPlugins = make(chan *Plugin, 4)
 	detected := make(chan string, 4)
 	start := make(chan string, 4)
 	stop := make(chan string, 4)
@@ -49,42 +51,55 @@ func startPlugins() {
 				Send(Self(), "pluginStopped", plugin.File)
 			case file := <-start:
 				log.Println("Starting plugin", file)
-
-				plug, err := plugin.Open(file)
-				if err != nil {
-					log.Println("Open plugin error:", err)
-					continue
-				}
-
-				start, serr0 := plug.Lookup("Start")
-				if serr0 != nil {
-					log.Println("Lookup start error:", serr0)
-					continue
-				}
-
-				stop, serr2 := plug.Lookup("Stop")
-				if serr2 != nil {
-					log.Println("Lookup stop error:", serr2)
-					continue
-				}
-
-				script, serr1 := plug.Lookup("Script")
-				if serr1 != nil {
-					log.Println("Lookup script error:", serr1)
-					continue
-				}
-
-				p := Plugin{
-					Id:     RandId(),
-					File:   file,
-					Stop:   stop.(func()),
-					Script: script.(func(*Script)),
-				}
-
-				plugins[p.Id] = &p
-				start.(func(*EscConfig))(config)
-				Send(Self(), "pluginStarted", p.File)
+				go startPlugin(file)
+			case plugin := <-inPlugins:
+				plugins[plugin.Id] = plugin
+				Send(Self(), "pluginStarted", plugin.File)
 			}
 		}
 	}()
+}
+
+func startPlugin(file string) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("Recovered in plugin", file, r)
+		}
+	}()
+
+	plug, err := plugin.Open(file)
+	if err != nil {
+		log.Println("Open plugin error:", err)
+		return
+	}
+
+	start, serr0 := plug.Lookup("Start")
+	if serr0 != nil {
+		log.Println("Lookup start error:", serr0)
+		return
+	}
+
+	stop, serr2 := plug.Lookup("Stop")
+	if serr2 != nil {
+		log.Println("Lookup stop error:", serr2)
+		return
+	}
+
+	script, serr1 := plug.Lookup("Script")
+	if serr1 != nil {
+		log.Println("Lookup script error:", serr1)
+		return
+	}
+
+	p := Plugin{
+		Id:     RandId(),
+		File:   file,
+		Stop:   stop.(func()),
+		Script: script.(func(*Script)),
+	}
+
+	start.(func(*EscConfig))(config)
+
+	inPlugins <- &p
+
 }
