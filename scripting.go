@@ -30,49 +30,29 @@ func luaMessage(vm *lua.LState, message *Message) *lua.LTable {
 	return table
 }
 
-func luaSendCmd(vm *lua.LState) int {
+func luaSend(vm *lua.LState) int {
 	to := vm.ToString(1)
 	name := vm.ToString(2)
 	payload := vm.ToString(3)
-	SendCommand(to, name, payload)
+	Send(to, name, payload)
 	return 0
 }
 
-func luaSendCmdC(vm *lua.LState) int {
+func luaSendC(vm *lua.LState) int {
 	to := vm.ToString(1)
 	name := vm.ToString(2)
 	payload := vm.ToString(3)
 	coalesce := vm.ToBool(4)
-	SendCommandC(to, name, payload, coalesce)
+	SendC(to, name, payload, coalesce)
 	return 0
 }
 
-func luaSendEvt(vm *lua.LState) int {
-	name := vm.ToString(1)
-	payload := vm.ToString(2)
-	SendEvent(name, payload)
-	return 0
-}
-
-func luaOnCmd(script *Script, vm *lua.LState) int {
+func luaOn(script *Script, vm *lua.LState) int {
 	from := vm.ToString(1)
 	name := vm.ToString(2)
 	handler := vm.ToFunction(3)
 
-	listener := OnCommand(from, name, func(message *Message) {
-		ScriptCalls <- &ScriptCall{Message: message, Fun: handler, Script: script}
-	})
-
-	script.Listeners = append(script.Listeners, listener)
-	return 0
-}
-
-func luaOnEvt(script *Script, vm *lua.LState) int {
-	from := vm.ToString(1)
-	name := vm.ToString(2)
-	handler := vm.ToFunction(3)
-
-	listener := OnEvent(from, name, func(message *Message) {
+	listener := On(from, name, func(message *Message) {
 		ScriptCalls <- &ScriptCall{Message: message, Fun: handler, Script: script}
 	})
 
@@ -146,18 +126,14 @@ func startScript(file string) *Script {
 	vm.SetGlobal("config", vm.NewFunction(luaConfig))
 	vm.SetGlobal("self", vm.NewFunction(luaSelf))
 	vm.SetGlobal("log", vm.NewFunction(luaLog))
-	vm.SetGlobal("onEvent", vm.NewFunction(func(vm *lua.LState) int {
-		return luaOnEvt(&script, vm)
-	}))
-	vm.SetGlobal("onCommand", vm.NewFunction(func(vm *lua.LState) int {
-		return luaOnCmd(&script, vm)
+	vm.SetGlobal("on", vm.NewFunction(func(vm *lua.LState) int {
+		return luaOn(&script, vm)
 	}))
 	vm.SetGlobal("tick", vm.NewFunction(func(vm *lua.LState) int {
 		return luaTick(&script, vm)
 	}))
-	vm.SetGlobal("sendEvent", vm.NewFunction(luaSendEvt))
-	vm.SetGlobal("sendCommand", vm.NewFunction(luaSendCmd))
-	vm.SetGlobal("sendCommandC", vm.NewFunction(luaSendCmdC))
+	vm.SetGlobal("send", vm.NewFunction(luaSend))
+	vm.SetGlobal("sendC", vm.NewFunction(luaSendC))
 
 	vm.PreloadModule("http", gluahttp.NewHttpModule(&http.Client{}).Loader)
 	vm.PreloadModule("json", json.Loader)
@@ -184,7 +160,7 @@ func startScripting() {
 
 	ScriptCalls = make(chan *ScriptCall, 4)
 
-	OnEvent(Self(), "fileSync", func(msg *Message) {
+	On(Self(), "fileSync", func(msg *Message) {
 		parts := strings.SplitN(msg.Payload, ",", 2)
 		file := parts[0]
 		if strings.HasSuffix(file, ".lua") {
@@ -192,14 +168,14 @@ func startScripting() {
 		}
 	})
 
-	OnEvent(Self(), "fileRemoved", func(msg *Message) {
+	On(Self(), "fileRemoved", func(msg *Message) {
 		name := msg.Payload
 		if _, ok := scripts[name]; ok {
 			stop <- name
 		}
 	})
 
-	OnEvent(Self(), "pluginStarted", func(msg *Message) {
+	On(Self(), "pluginStarted", func(msg *Message) {
 		for _, script := range scripts {
 			stop <- script.Id
 			start <- script.File
@@ -221,12 +197,12 @@ func startScripting() {
 				log.Println("Stoping script", script.File)
 				stopScript(scripts[id])
 				delete(scripts, id)
-				SendEvent("scriptStopped", script.File)
+				Send(Self(), "scriptStopped", script.File)
 			case name := <-start:
 				log.Println("Starting script", name)
 				script := startScript(name)
 				scripts[script.Id] = script
-				SendEvent("scriptStarted", script.File)
+				Send(Self(), "scriptStarted", script.File)
 			case call := <-ScriptCalls:
 				var arg *lua.LTable
 				n := 0

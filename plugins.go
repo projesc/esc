@@ -14,7 +14,7 @@ func startPlugins() {
 	start := make(chan string, 4)
 	stop := make(chan string, 4)
 
-	OnEvent(Self(), "fileSync", func(msg *Message) {
+	On(Self(), "fileSync", func(msg *Message) {
 		parts := strings.SplitN(msg.Payload, ",", 2)
 		file := parts[0]
 		if strings.HasSuffix(file, ".so") {
@@ -22,7 +22,7 @@ func startPlugins() {
 		}
 	})
 
-	OnEvent(Self(), "fileRemoved", func(msg *Message) {
+	On(Self(), "fileRemoved", func(msg *Message) {
 		file := msg.Payload
 		for _, plugin := range plugins {
 			if plugin.File == file {
@@ -46,7 +46,7 @@ func startPlugins() {
 				log.Println("Stoping plugin", plugin.File, plugin.Id)
 				plugin.Stop()
 				delete(plugins, id)
-				SendEvent("pluginStopped", plugin.File)
+				Send(Self(), "pluginStopped", plugin.File)
 			case file := <-start:
 				log.Println("Starting plugin", file)
 
@@ -83,7 +83,7 @@ func startPlugins() {
 
 				plugins[p.Id] = &p
 				start.(func(*EscConfig))(config)
-				SendEvent("pluginStarted", p.File)
+				Send(Self(), "pluginStarted", p.File)
 			}
 		}
 	}()

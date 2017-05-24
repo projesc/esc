@@ -1,12 +1,11 @@
 # Evented Scripting Cluster (name subject to change)
 
-This project is an study and attempt to create a replicated cluster of scripts to fire events and commands on and off.
+This project is an study and attempt to create a replicated cluster of scripts to fire messages on and off.
 
 ## Features
 
 - Single binary (easy to deploy)
-- Event senders & listeners
-- Command senders & listeners
+- Senders & Listeners
 - Synced key-value store
 - Script directory sync
 - Lua scripting
@@ -91,7 +90,7 @@ It will find connect to every esc on the same network.
 
 ## Messaging 
 
-An _event_ is a message with a _name_ and a _payload_ sent to all servers, and a _command_ is a message with a _target_, a _name_ and a _payload_.
+An _message_ is a document with a _target_, a _name_ and a _payload_.
 
 Right now it handles only strings as the payload.
 
@@ -107,29 +106,29 @@ And example of a script exploring the available functions:
 log("I am "..self()) -- this node name, in case you need
 log("Foo is "..config("foo")) -- access config extras
 
--- listen on events from any node (the first "*") that are named hello
-onEvent("*","hello",function(msg)
+-- listen on messages from any node (the first "*") that are named hello
+on("*","hello",function(msg)
     log("From "..msg.From.." got "..msg.Name..": "..msg.Payload)
     log("And foo is "..Get("foo"))
 end)
 
--- listen on to the command clear from nodeb
-onCommand(nameOf("nodeb"),"clear",function(msg)
+-- listen on message clear from nodeb
+on(nameOf("nodeb"),"clear",function(msg)
 end)
 
-onCommand("*","shutdown",function(msg) 
+on("*","shutdown",function(msg) 
   -- os and all libs are available
    os.execute("shutdown")
 end)
 
--- Send command to nodeb, could be to everyone with "*"
-sendCommand("nodeb","blink","led3")
+-- Send message to nodeb, could be to everyone with "*"
+send("nodeb","blink","led3")
 
 -- Keep a thread going at each 2secs until stopped
 tick(2,function()
     i = i + 1
     log("Sending hello "..i)
-    sendEvent("hello","world")
+    send("*","hello","world")
     return i <= 5
     -- if return is true it will loop
 end)

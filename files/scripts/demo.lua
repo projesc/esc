@@ -4,13 +4,13 @@ log(foo)
 log("CFG "..config("foo"))
 log("CFG "..config("fuz"))
 
-onEvent("*","test",function(msg)
+on("*","test",function(msg)
   log("Received "..msg.name)
 
-  sendCommand(self(),"hello","world")
+  send(self(),"hello","world")
 end)
 
-onCommand("*","hello",function(msg)
+on("*","hello",function(msg)
   log("Hello "..msg.payload.."!")
 end)
 
@@ -18,7 +18,7 @@ i=0
 tick(2,function()
   log("Sending hello "..i.."!")
   i = i +1
-  sendEvent("test","hello")
+  send(self(),"test","hello")
   return i <= 5
 end)
 

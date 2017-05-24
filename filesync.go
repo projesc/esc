@@ -23,9 +23,9 @@ func startDirSync() {
 	fileOut = make(chan *File, 4)
 	fileRm = make(chan string, 4)
 
-	OnEvent("*", "fileSync", onFileChanged)
-	OnEvent("*", "fileRemoved", onFileRemoved)
-	OnEvent("*", "connected", onNewNode)
+	On("*", "fileSync", onFileChanged)
+	On("*", "fileRemoved", onFileRemoved)
+	On("*", "connected", onNewNode)
 
 	if config.Directory != "" {
 		DirSync(config.Directory)
@@ -167,14 +167,14 @@ func DirSync(dirName string) {
 			case file := <-fileOut:
 				log.Println("Sending out file", file.Name)
 				time, _ := file.Time.MarshalText()
-				SendEventC("fileSync", fmt.Sprintf("%s,%s,%s", file.Name, time, base64.StdEncoding.EncodeToString(file.Content)), true)
+				SendC("*", "fileSync", fmt.Sprintf("%s,%s,%s", file.Name, time, base64.StdEncoding.EncodeToString(file.Content)), true)
 			case <-ticker.C:
 				got := make(map[string]bool)
 				ScanDir(registeredFiles, got, dirName)
 				for name, _ := range registeredFiles {
 					if _, ok := got[name]; !ok {
 						log.Println("Removed file", name)
-						SendEvent("fileRemoved", name)
+						Send("*", "fileRemoved", name)
 						fileRm <- name
 					}
 				}

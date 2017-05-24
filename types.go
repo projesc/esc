@@ -20,8 +20,6 @@ type EscConfig struct {
 }
 
 type Message struct {
-	Command  bool   `json:"command"`
-	Event    bool   `json:"event"`
 	From     string `json:"from"`
 	Name     string `json:"name"`
 	To       string `json:"to"`
